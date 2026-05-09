@@ -12,6 +12,8 @@ _VAULT_DIR_MAP: Dict[str, str] = {
     "episodic":   "episodic",
     "semantic":   "semantic",
     "reflection": "reflections",
+    "consolidation": "consolidations",
+    "media":      "media",
     "core":       "core",       # present so paths resolve correctly before the guard fires
 }
 
@@ -49,7 +51,7 @@ def link_memories(config: Optional[Config] = None) -> Dict[str, List[str]]:
 
 def _load_all_memories(config: Config) -> List[Dict]:
     memories = []
-    for mem_type in ["raw", "episodic", "semantic", "reflections"]:
+    for mem_type in ["raw", "episodic", "semantic", "reflections", "consolidations", "media"]:
         mem_dir = config.memory_path / mem_type
         if not mem_dir.exists():
             continue

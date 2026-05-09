@@ -6,8 +6,12 @@ from .write_guard import WriteAuthorizationError, agent_run_context, is_write_au
 from .hardware_auth_provider import ESP32S3AuthProvider, HardwareAuthError
 from .manifest_agent import DriftReport, ManifestAgent, ToolAdditionStore
 from .memory_index_agent import MemoryIndexAgent
+from .search_agent import SearchAgent
+from .self_inspection_agent import SelfInspectionAgent
 from .builtin_tools import BUILTIN_TOOLS, COMMAND_PREVIEW, FILE_READ, FILE_WRITE, register_builtin_tools
+from .background_consolidation import check_memory_growth, notify_memory_created
 from .config import Config
+from .consolidate import consolidate_memories
 from .decision import DecisionStore, select_next_task
 from .evaluate import EvaluationStore, evaluate_simulation
 from .exceptions import CoreMemoryProtectedError, ToolAlreadyRegisteredError
@@ -15,6 +19,7 @@ from .ingest import ingest
 from .linker import link_memories
 from .llm import generate_text
 from .memory_store import MemoryStore
+from .media import ingest_image_bytes, ingest_image_data_url, ingest_image_file
 from .orchestrator import Orchestrator
 from .reflect import reflect
 from .schemas import (
@@ -55,6 +60,8 @@ __all__ = [
     "HardwareAuthError",
     "ManifestAgent",
     "MemoryIndexAgent",
+    "SearchAgent",
+    "SelfInspectionAgent",
     "MemoryStore",
     "Orchestrator",
     "PathGuard",
@@ -73,11 +80,16 @@ __all__ = [
     "WriteAgent",
     "create_proposal",
     "create_tasks_from_reflection",
+    "check_memory_growth",
+    "consolidate_memories",
     "evaluate_simulation",
     "generate_text",
     "agent_run_context",
     "get_bus",
     "ingest",
+    "ingest_image_bytes",
+    "ingest_image_data_url",
+    "ingest_image_file",
     "is_write_authorized",
     "link_memories",
     "local_date_time_string",
@@ -85,6 +97,7 @@ __all__ = [
     "local_time_string",
     "make_agent_message",
     "make_staging_proposal",
+    "notify_memory_created",
     "reflect",
     "register_builtin_tools",
     "search",

@@ -32,6 +32,7 @@ AGENT_ROLES = {
     "executor",   # task-specific: select → simulate → evaluate one task
     "monitor",    # watches memory growth, triggers reflect() when due
     "evaluator",  # re-scores past simulations against observed results
+    "consolidator",  # finds duplicate/overlapping memories and appends consensus
     "custom",     # caller-defined role; role_description is required
 }
 
@@ -143,6 +144,8 @@ class AgentNode:
             return self._run_monitor(**kwargs)
         if self.role == "evaluator":
             return self._run_evaluator(**kwargs)
+        if self.role == "consolidator":
+            return self._run_consolidator(**kwargs)
         # custom
         return {"role": self.role, "description": self.role_description, "kwargs": kwargs}
 
@@ -280,6 +283,29 @@ class AgentNode:
             "role":          "evaluator",
             "simulation_id": target["id"],
             "evaluation":    evaluation,
+        }
+
+    def _run_consolidator(self, **_: Any) -> Dict:
+        """Request append-only duplicate detection and consensus writing."""
+        result = get_bus().request(
+            "data.write.consolidate",
+            make_agent_message(
+                agent_id=self.id,
+                action="write",
+                target="data_write_agent",
+                payload={},
+                status="pending",
+                timestamp=utc_now_iso(),
+                requires_approval=False,
+            ),
+        ) or {}
+        return {
+            "role": "consolidator",
+            "created_count": result.get("created_count", 0),
+            "candidate_groups": result.get("candidate_groups", 0),
+            "skipped_existing": result.get("skipped_existing", 0),
+            "created_ids": [r.get("id") for r in result.get("created", [])],
+            "rejected": result.get("rejected", False),
         }
 
     # ---------------------------------------------------------------- persistence

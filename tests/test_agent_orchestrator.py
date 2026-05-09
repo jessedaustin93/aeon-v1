@@ -31,6 +31,7 @@ def test_agent_roles_are_defined():
     assert "executor" in AGENT_ROLES
     assert "monitor" in AGENT_ROLES
     assert "evaluator" in AGENT_ROLES
+    assert "consolidator" in AGENT_ROLES
     assert "custom" in AGENT_ROLES
 
 
@@ -271,6 +272,7 @@ def test_tick_returns_summary_keys(cfg):
     assert "monitor" in summary
     assert "thinkers" in summary
     assert "executor" in summary
+    assert "consolidator" in summary
     assert "evaluator" in summary
 
 

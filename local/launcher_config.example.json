@@ -1,0 +1,22 @@
+{
+  "dashboard": {
+    "host": "127.0.0.1",
+    "port": 8765,
+    "open_browser": true
+  },
+  "runner": {
+    "poll_seconds": 5,
+    "link_every_passes": 12
+  },
+  "lm_studio": {
+    "enabled": true,
+    "base_url": "http://localhost:1234/v1",
+    "command": ""
+  },
+  "obsidian": {
+    "enabled": true,
+    "command": "",
+    "vault_name": "",
+    "vault_path": "vault"
+  }
+}

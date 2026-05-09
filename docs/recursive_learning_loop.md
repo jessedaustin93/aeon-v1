@@ -87,6 +87,24 @@ Each cycle through the loop increases the depth and quality of stored knowledge 
 
 ---
 
+## Phase 2b: Consolidation
+
+**Trigger:** Every 5 new source memories by default, a call to `consolidate_memories()`, or an orchestrator tick through the persistent `consolidator` agent.
+
+**What happens:**
+
+1. Episodic and semantic memories are loaded.
+2. Likely duplicate or strongly overlapping memories are grouped with word-overlap plus shared-tag signals.
+3. Groups that already have a consolidation record are skipped.
+4. New groups produce append-only consensus records in `memory/consolidations/` and `vault/consolidations/`.
+5. Source records are linked but never deleted, rewritten, or merged.
+
+Consolidation is recursive memory housekeeping: it lets Aeon compress repeated ideas into a readable consensus layer while preserving the original evidence trail.
+
+The background trigger is count-driven rather than clock-driven. Each raw, episodic, or semantic memory write updates a persisted local counter, and the fifth new source memory starts a daemon-thread consolidation pass. This means consolidation follows memory growth instead of waiting for CLI input or a timer.
+
+---
+
 ## Phase 3: Decision and Action Simulation (Layer 3)
 
 **Trigger:** A call to `select_next_task()` or `python scripts/manage_tasks.py decide`.
@@ -171,11 +189,17 @@ This is the recursive element: reflections → tasks → decisions → simulatio
 
 ---
 
-## Reflection Interval
+## Reflection and Consolidation Intervals
 
 The `Config.reflection_interval` field (default: 10) is a placeholder for future automation.
 A future version could automatically trigger a reflection pass every N ingestions, or on a schedule.
 For now, reflections are triggered manually.
+
+Consolidation already has a count-driven trigger:
+
+- `Config.enable_background_consolidation`: enabled by default outside tests.
+- `Config.consolidation_trigger_interval`: default `5`.
+- `Config.consolidation_trigger_memory_types`: default `["raw", "episodic", "semantic"]`.
 
 ---
 
@@ -208,6 +232,8 @@ Day 2:
 
   reflect()
   → reflections/r7b8c9d0.json    (7-section structured note, confidence=0.42)
+  consolidate_memories()
+  → consolidations/c1d2e3f4.json  (append-only consensus over overlapping memories)
   → tasks/t1a2b3c4.json          (auto-created: "review test coverage")
   → tasks/t5d6e7f8.json          (auto-created: "document passing criteria")
 

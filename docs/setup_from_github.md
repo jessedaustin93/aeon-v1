@@ -46,7 +46,7 @@ pytest
 Expected result for the current suite:
 
 ```text
-577 passed, 1 skipped
+612 passed, 1 skipped
 ```
 
 ## 4. Run Aeon Without An LLM
@@ -67,11 +67,25 @@ Or, after editable install:
 aeon-chat
 ```
 
-Windows users can also launch:
+Windows users can also launch chat directly:
 
 ```text
 Aeon Chat.bat
 ```
+
+Or open the local dashboard/launcher:
+
+```text
+Aeon Launcher.bat
+```
+
+From a terminal:
+
+```bash
+python scripts/aeon_launcher.py
+```
+
+The dashboard opens at `http://127.0.0.1:8765` by default and can start the Aeon runner, launch LM Studio, launch Obsidian, display status, and request clean shutdown.
 
 ## 5. Enable LM Studio
 
@@ -94,15 +108,30 @@ LM Studio:
 AEON_V1_LLM_CHAT_MODEL=your-fast-chat-model-id
 AEON_V1_LLM_MODEL=your-general-model-id
 AEON_V1_LLM_DEEP_MODEL=your-deep-reasoning-model-id
+AEON_V1_LLM_SEARCH_MODEL=your-memory-search-model-id
+AEON_V1_LLM_VISION_MODEL=your-vision-model-id
 ```
 
-You may use one model for all three roles, or split them by purpose:
+You may use one model for every role, or split them by purpose:
 
 | Variable | Purpose |
 |---|---|
 | `AEON_V1_LLM_CHAT_MODEL` | Fast interactive chat responses |
 | `AEON_V1_LLM_MODEL` | General reflection/simulation reasoning |
 | `AEON_V1_LLM_DEEP_MODEL` | Deeper tool-calling reflection/simulation paths |
+| `AEON_V1_LLM_SEARCH_MODEL` | Memory-search planning before the chat model answers |
+| `AEON_V1_LLM_VISION_MODEL` | Optional image understanding for dashboard uploads |
+
+Good generic starting point:
+
+- use a fast instruct/chat model for chat
+- use a reasoning-capable model for deep work
+- use a small reasoning-capable model for memory search
+- use a vision-language model only when image upload/analysis is needed
+
+Leave any role blank if you do not want to use it yet. Aeon will fall back to
+the general model where possible, then to local rule-based behavior if the model
+or server is unavailable.
 
 In LM Studio, start the OpenAI-compatible local server. The default Aeon URL is:
 
@@ -115,6 +144,8 @@ If LM Studio uses another URL, update:
 ```env
 AEON_V1_LLM_BASE_URL=http://localhost:1234/v1
 ```
+
+Dashboard image uploads work best when `AEON_V1_LLM_VISION_MODEL` is set to an active vision-capable LM Studio model. If the model is missing, unloaded, or fails, Aeon still stores the image and marks analysis unavailable for later reprocessing.
 
 ## 6. Optional Tool Calling
 
@@ -180,7 +211,31 @@ Start from `index.md`. Aeon-generated notes use YAML frontmatter and `[[wikilink
 
 See `docs/obsidian.md` for the full local workflow.
 
-## 9. Optional ESP32-S3 Approval Device
+## 9. Optional Launcher Configuration
+
+The launcher works without a local config file, but exact app paths vary by
+machine. To customize local startup commands without committing private paths:
+
+```bash
+cp local/launcher_config.example.json local/launcher_config.json
+```
+
+PowerShell:
+
+```powershell
+Copy-Item local/launcher_config.example.json local/launcher_config.json
+```
+
+Then edit `local/launcher_config.json`. You can set:
+
+- dashboard host/port
+- runner poll interval
+- LM Studio command or base URL
+- Obsidian command, vault name, or vault path
+
+`local/launcher_config.json` is ignored by Git.
+
+## 10. Optional ESP32-S3 Approval Device
 
 The repository includes firmware source for the hardware approval token:
 
@@ -204,24 +259,28 @@ pio device monitor
 
 See `docs/auth_device.md` for protocol details.
 
-## 10. What Is Ready Immediately
+## 11. What Is Ready Immediately
 
 - Python package source under `src/aeon_v1/`
 - CLI scripts under `scripts/`
 - Windows launcher `Aeon Chat.bat`
+- Windows launcher/control panel `Aeon Launcher.bat`
 - local JSON memory directories
 - Obsidian-compatible Markdown vault directories
+- dashboard image upload and media-memory directories
 - test suite
 - LM Studio template `.env.lmstudio.template`
 - ESP32-S3 firmware source
 
-## 11. What Must Stay Local
+## 12. What Must Stay Local
 
 - `.env`
 - API keys
 - exact local model selections
 - LM Studio server state
 - Obsidian app/workspace state in `vault/.obsidian/`
+- launcher overrides in `local/launcher_config.json`
+- runner status files in `memory/runtime/`
 - generated runtime memories and transcripts
 - flashed hardware state
 

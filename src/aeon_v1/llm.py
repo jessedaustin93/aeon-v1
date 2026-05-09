@@ -11,6 +11,7 @@ Environment variables:
     AEON_V1_LLM=1                        — enable LLM
     AEON_V1_LLM_PROVIDER=lmstudio        — select provider (default: anthropic)
     AEON_V1_LLM_MODEL=google/gemma-4-e4b — model name
+    AEON_V1_LLM_SEARCH_MODEL=mistral/...  — optional memory-search planner model
     AEON_V1_LLM_BASE_URL=http://...      — LM Studio base URL (default: http://localhost:1234/v1)
     AEON_V1_LLM_REASONING_EFFORT=low     — LM Studio reasoning effort for reasoning models
     ANTHROPIC_API_KEY=<key>              — required only for anthropic provider
@@ -19,8 +20,10 @@ import json
 import os
 import re
 import threading
+import base64
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from .config import Config
@@ -91,11 +94,79 @@ def generate_chat(messages: List[Dict], config: Optional[Config] = None) -> Opti
     if not config.llm_enabled:
         return None
     if config.llm_provider == "lmstudio":
-        return _call_lmstudio_messages(messages, config, model=config.llm_chat_model)
+        result = _call_lmstudio_messages(messages, config, model=config.llm_chat_model)
+        if result:
+            return result
+        if config.llm_chat_model != config.llm_model:
+            return _call_lmstudio_messages(messages, config, model=config.llm_model)
+        return None
     if config.llm_provider == "anthropic":
         prompt = "\n\n".join(f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages)
         return _call_anthropic(prompt, config)
     return None
+
+
+def generate_search_text(prompt: str, config: Optional[Config] = None) -> Optional[str]:
+    """Call the configured memory-search planner model.
+
+    This role is intentionally separate from chat. It can use a model like
+    Mistral to turn a fuzzy recall request into concrete search queries without
+    changing Aeon's conversational model.
+    """
+    if config is None:
+        config = Config()
+    if not config.llm_enabled or config.llm_provider != "lmstudio":
+        return None
+    return _call_lmstudio_messages(
+        [{"role": "user", "content": prompt}],
+        config,
+        model=config.llm_search_model,
+        timeout=config.llm_search_timeout_seconds,
+        include_reasoning=False,
+    )
+
+
+def generate_image_description(
+    image_path: Path,
+    prompt: str,
+    config: Optional[Config] = None,
+) -> Optional[str]:
+    """Describe an image through an OpenAI-compatible vision model."""
+    if config is None:
+        config = Config()
+    if not config.llm_enabled or config.llm_provider != "lmstudio":
+        return None
+    model = resolve_lmstudio_vision_model(config)
+    try:
+        mime = _image_mime_type(image_path)
+        data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    except Exception:
+        return None
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime};base64,{data}"},
+                },
+            ],
+        }
+    ]
+    return _call_lmstudio_messages(
+        messages,
+        config,
+        model=model,
+        timeout=config.llm_media_timeout_seconds,
+        include_reasoning=False,
+    ) or _call_lmstudio_native_image(
+        data_url=f"data:{mime};base64,{data}",
+        prompt=prompt,
+        config=config,
+        model=model,
+    )
 
 
 def _call_anthropic(prompt: str, config: Config) -> Optional[str]:
@@ -129,7 +200,13 @@ def _call_lmstudio(prompt: str, config: Config) -> Optional[str]:
     return _call_lmstudio_messages([{"role": "user", "content": prompt}], config)
 
 
-def _call_lmstudio_messages(messages: List[Dict], config: Config, model: Optional[str] = None) -> Optional[str]:
+def _call_lmstudio_messages(
+    messages: List[Dict],
+    config: Config,
+    model: Optional[str] = None,
+    timeout: Optional[int] = None,
+    include_reasoning: bool = True,
+) -> Optional[str]:
     """Call LM Studio local server with OpenAI-compatible chat messages."""
     url = f"{config.llm_base_url.rstrip('/')}/chat/completions"
     if not _lm_studio_semaphore.acquire(blocking=False):
@@ -144,7 +221,7 @@ def _call_lmstudio_messages(messages: List[Dict], config: Config, model: Optiona
                 "temperature": config.llm_temperature,
                 "max_tokens": min(config.llm_max_tokens * attempt, 1024),
             }
-            if config.llm_reasoning_effort:
+            if include_reasoning and config.llm_reasoning_effort:
                 payload_data["reasoning_effort"] = config.llm_reasoning_effort
             payload = json.dumps(payload_data).encode("utf-8")
             try:
@@ -154,7 +231,7 @@ def _call_lmstudio_messages(messages: List[Dict], config: Config, model: Optiona
                     headers={"Content-Type": "application/json"},
                     method="POST",
                 )
-                with urllib.request.urlopen(req, timeout=config.llm_chat_timeout_seconds) as resp:
+                with urllib.request.urlopen(req, timeout=timeout or config.llm_chat_timeout_seconds) as resp:
                     data = json.loads(resp.read().decode("utf-8"))
                     message = data["choices"][0]["message"]
                     content = (message.get("content") or "").strip()
@@ -166,6 +243,89 @@ def _call_lmstudio_messages(messages: List[Dict], config: Config, model: Optiona
         return None
     finally:
         _lm_studio_semaphore.release()
+
+
+def _call_lmstudio_native_image(
+    data_url: str,
+    prompt: str,
+    config: Config,
+    model: str,
+) -> Optional[str]:
+    """Fallback to LM Studio's native /api/v1/chat image input shape."""
+    base_url = config.llm_base_url.rstrip("/")
+    if base_url.endswith("/v1"):
+        native_base = base_url[:-3]
+    else:
+        native_base = base_url
+    url = f"{native_base}/api/v1/chat"
+
+    payload_data = {
+        "model": model,
+        "input": [
+            {"type": "text", "content": prompt},
+            {"type": "image", "data_url": data_url},
+        ],
+        "temperature": config.llm_temperature,
+        "max_output_tokens": min(config.llm_max_tokens, 1024),
+        "store": False,
+    }
+    payload = json.dumps(payload_data).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=config.llm_media_timeout_seconds) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+    for item in data.get("output", []):
+        if item.get("type") == "message":
+            content = (item.get("content") or "").strip()
+            if content:
+                return content
+    return None
+
+
+def _image_mime_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in (".jpg", ".jpeg"):
+        return "image/jpeg"
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".gif":
+        return "image/gif"
+    return "image/png"
+
+
+def _detect_lmstudio_vision_model(config: Config) -> str:
+    """Pick a likely loaded vision model from LM Studio when no env var is set."""
+    url = f"{config.llm_base_url.rstrip('/')}/models"
+    try:
+        with urllib.request.urlopen(url, timeout=2) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return ""
+    candidates = []
+    for item in data.get("data", []):
+        model_id = str(item.get("id", ""))
+        lowered = model_id.lower()
+        if any(token in lowered for token in ("vl", "vision", "visual", "llava", "minicpm-v", "gemma-3")):
+            candidates.append(model_id)
+    return candidates[0] if candidates else ""
+
+
+def resolve_lmstudio_vision_model(config: Config) -> str:
+    """Resolve the model Aeon should use for image analysis."""
+    return (
+        config.llm_vision_model
+        or _detect_lmstudio_vision_model(config)
+        or config.llm_chat_model
+        or config.llm_model
+    )
 
 
 def generate_with_memory(
@@ -204,11 +364,20 @@ def generate_with_memory(
             result = _call_lmstudio_with_tools(prompt, config)
             if result:
                 return result
-            return _call_lmstudio_messages(
+            result = _call_lmstudio_messages(
                 [{"role": "user", "content": prompt}],
                 config,
                 model=config.llm_deep_model,
             )
+            if result:
+                return result
+            if config.llm_deep_model != config.llm_model:
+                return _call_lmstudio_messages(
+                    [{"role": "user", "content": prompt}],
+                    config,
+                    model=config.llm_model,
+                )
+            return None
         # Other providers: fall back to inlined prompt (no tool calling)
         return generate_text(prompt, config)
     finally:

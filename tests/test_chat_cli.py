@@ -5,12 +5,15 @@ from aeon_v1.chat_cli import (
     ChatTurn,
     build_chat_prompt,
     compact,
+    diversify_results,
     fallback_response,
     format_history,
     format_memories,
     memory_preview,
     parse_args,
+    retrieve_context,
 )
+from aeon_v1 import Config, ingest
 
 
 def test_compact_keeps_short_text():
@@ -89,3 +92,41 @@ def test_parse_args_can_disable_transcript(tmp_path):
     options = parse_args(["--base-path", str(tmp_path), "--transcript", "off"])
 
     assert options.transcript_path is None
+
+
+def test_retrieve_context_includes_raw_memories(tmp_path):
+    cfg = Config(tmp_path)
+    ingest("The special dashboard recall number is 123456.", config=cfg)
+
+    results = retrieve_context("123456", cfg, limit=5)
+
+    assert any(r["match_type"] == "raw" for r in results)
+
+
+def test_retrieve_context_finds_natural_language_topic(tmp_path):
+    cfg = Config(tmp_path)
+    ingest("Aeon is a local recursive memory system with a dashboard.", config=cfg)
+    ingest("The special dashboard recall number is 123456.", config=cfg)
+
+    results = retrieve_context("what do you remember about Aeon", cfg, limit=5)
+
+    combined = " ".join(
+        str(r.get("memory", {}).get("text", ""))
+        + str(r.get("memory", {}).get("summary", ""))
+        for r in results
+    )
+    assert "recursive memory system" in combined
+
+
+def test_diversify_results_keeps_multiple_memory_layers():
+    results = [
+        {"match_type": "raw", "memory": {"id": "raw1", "type": "raw", "text": "raw"}},
+        {"match_type": "raw", "memory": {"id": "raw2", "type": "raw", "text": "raw"}},
+        {"match_type": "semantic", "memory": {"id": "sem1", "type": "semantic", "description": "sem"}},
+        {"match_type": "episodic", "memory": {"id": "ep1", "type": "episodic", "summary": "ep"}},
+    ]
+
+    selected = diversify_results(results, limit=3)
+    selected_types = [r["memory"]["type"] for r in selected]
+
+    assert selected_types == ["semantic", "episodic", "raw"]

@@ -10,6 +10,7 @@ Design contract
 - Spawns one "executor" agent per task selected for simulation.
 - Spawns one "evaluator" agent per simulation awaiting feedback.
 - A "monitor" agent is kept alive to watch memory growth and trigger reflections.
+- A "consolidator" agent is kept alive to append consensus records for duplicates.
 - Dissolved agents are removed from the pool; their records remain on disk.
 - No subprocess, os.system, or execution primitive is ever called.
 - vault/core/ is never written.
@@ -55,10 +56,11 @@ class Orchestrator:
         Cycle order:
           1. Ensure monitor agent exists and run it.
           2. Ensure thinking pool is full; run each thinker once.
-          3. Spawn and run executor agents for pending tasks (up to one per tick).
-          4. Spawn and run evaluator for the oldest unreviewed simulation.
-          5. Dissolve any agents whose status is already "dissolved" externally.
-          6. Return a structured summary.
+          3. Ensure consolidator agent exists and run it.
+          4. Spawn and run executor agents for pending tasks (up to one per tick).
+          5. Spawn and run evaluator for the oldest unreviewed simulation.
+          6. Dissolve any agents whose status is already "dissolved" externally.
+          7. Return a structured summary.
 
         This method is intentionally synchronous — swarm parallelism is
         achieved by calling tick() from multiple threads or processes in the
@@ -68,6 +70,7 @@ class Orchestrator:
             "tick_at":    utc_now_iso(),
             "monitor":    None,
             "thinkers":   [],
+            "consolidator": None,
             "executor":   None,
             "evaluator":  None,
         }
@@ -109,7 +112,23 @@ class Orchestrator:
                 )
                 summary["thinkers"].append(result)
 
-        # 3. Executor — one pending task per tick
+        # 3. Consolidator
+        consolidator = self._ensure_consolidator()
+        if consolidator.status == "idle":
+            summary["consolidator"] = bus.request(
+                f"agent.run.{consolidator.id}",
+                make_agent_message(
+                    agent_id="orchestrator",
+                    action="run",
+                    target=consolidator.id,
+                    payload={},
+                    status="pending",
+                    timestamp=now,
+                    requires_approval=False,
+                ),
+            )
+
+        # 4. Executor — one pending task per tick
         pending = TaskStore(self.config).list_tasks(status="pending")
         if pending:
             task = pending[0]
@@ -129,7 +148,7 @@ class Orchestrator:
             executor.dissolve()
             self._remove_dissolved()
 
-        # 4. Evaluator — oldest unreviewed simulation
+        # 5. Evaluator — oldest unreviewed simulation
         sim_store = SimulationStore(self.config)
         unreviewed = [s for s in sim_store.list_simulations() if s.get("feedback") == "unknown"]
         if unreviewed:
@@ -200,6 +219,12 @@ class Orchestrator:
         if monitors:
             return monitors[0]
         return self.spawn("monitor", role_description="memory growth watchdog")
+
+    def _ensure_consolidator(self) -> AgentNode:
+        consolidators = self._pool_by_role("consolidator")
+        if consolidators:
+            return consolidators[0]
+        return self.spawn("consolidator", role_description="duplicate memory consolidation agent")
 
     def _fill_thinker_pool(self) -> None:
         thinkers = self._pool_by_role("thinker")

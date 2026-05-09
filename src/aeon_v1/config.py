@@ -18,7 +18,7 @@ def _load_env(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        key = key.strip()
+        key = key.strip().lstrip("\ufeff")
         value = value.strip().strip('"').strip("'")
         if key and key not in os.environ:
             os.environ[key] = value
@@ -59,6 +59,16 @@ class Config:
         self.allow_tool_override: bool = False
         # Layer 6 — orchestrator / agent pool
         self.max_thinking_agents: int = 10
+        self.consolidation_similarity_threshold: float = 0.72
+        self.max_consolidations_per_pass: int = 5
+        # Background consolidation runs from memory creation events, not a clock.
+        # Pytest disables it by default so tests opt in explicitly.
+        argv_text = " ".join(sys.argv).lower()
+        self.enable_background_consolidation: bool = not (
+            os.environ.get("PYTEST_CURRENT_TEST") or "pytest" in argv_text
+        )
+        self.consolidation_trigger_interval: int = 5
+        self.consolidation_trigger_memory_types: list[str] = ["raw", "episodic", "semantic"]
         # Layer 4 — optional LLM reasoning
         # Toggle via AEON_V1_LLM=1 environment variable or set directly.
         self.llm_enabled: bool = os.environ.get("AEON_V1_LLM", "0").strip() == "1"
@@ -66,10 +76,14 @@ class Config:
         self.llm_model: str = os.environ.get("AEON_V1_LLM_MODEL", "claude-sonnet-4-6")
         self.llm_chat_model: str = os.environ.get("AEON_V1_LLM_CHAT_MODEL", self.llm_model)
         self.llm_deep_model: str = os.environ.get("AEON_V1_LLM_DEEP_MODEL", self.llm_model)
+        self.llm_search_model: str = os.environ.get("AEON_V1_LLM_SEARCH_MODEL", self.llm_deep_model)
+        self.llm_vision_model: str = os.environ.get("AEON_V1_LLM_VISION_MODEL", "")
         self.llm_temperature: float = 0.2
         self.llm_max_tokens: int = int(os.environ.get("AEON_V1_LLM_MAX_TOKENS", "1200"))
         self.llm_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_TIMEOUT", "60"))
         self.llm_chat_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_CHAT_TIMEOUT", "30"))
+        self.llm_search_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_SEARCH_TIMEOUT", "12"))
+        self.llm_media_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_MEDIA_TIMEOUT", "120"))
         self.llm_max_attempts: int = int(os.environ.get("AEON_V1_LLM_MAX_ATTEMPTS", "1"))
         self.llm_reasoning_effort: str = os.environ.get("AEON_V1_LLM_REASONING_EFFORT", "low")
         # LM Studio / OpenAI-compatible local server
@@ -79,10 +93,11 @@ class Config:
         self.llm_tool_calling: bool = os.environ.get("AEON_V1_LLM_TOOL_CALLING", "0").strip() == "1"
 
     def ensure_dirs(self):
-        for subdir in ["core", "raw", "episodic", "semantic", "reflections", "agents", "tasks"]:
+        for subdir in ["core", "raw", "episodic", "semantic", "reflections", "agents", "tasks", "consolidations", "media"]:
             (self.vault_path / subdir).mkdir(parents=True, exist_ok=True)
-        for subdir in ["raw", "episodic", "semantic", "reflections"]:
+        for subdir in ["raw", "episodic", "semantic", "reflections", "consolidations", "media"]:
             (self.memory_path / subdir).mkdir(parents=True, exist_ok=True)
+        (self.memory_path / "media" / "uploads").mkdir(parents=True, exist_ok=True)
         (self.memory_path / "schemas").mkdir(parents=True, exist_ok=True)
         # Layer 7 — governance directories
         for subdir in ["staging", "approved", "logs", "tool_additions"]:

@@ -18,6 +18,7 @@ hardware = ["pyserial>=3.5"]
 
 [project.scripts]
 aeon-chat = "aeon_v1.chat_cli:main"
+aeon-runner = "aeon_v1.runner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

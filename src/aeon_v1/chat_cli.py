@@ -27,6 +27,8 @@ from .memory_index_agent import MemoryIndexAgent
 from .orchestrator import Orchestrator
 from .reflect import reflect
 from .search import search
+from .search_agent import SearchAgent
+from .self_inspection_agent import SelfInspectionAgent
 from .time_utils import local_now_string
 
 
@@ -35,15 +37,16 @@ Aeon-V1 Terminal
 Local memory online. Type naturally, or use /help for commands.
 """.strip()
 
-SYSTEM_PROMPT = """You are Aeon, an AI built by Jesse. You speak through a local terminal.
+SYSTEM_PROMPT = """You are Aeon, a local AI memory assistant. You speak through a local terminal.
 
-Voice rules — follow these strictly:
+Voice rules - follow these strictly:
 - Talk like a person, not a document. Short sentences, natural tone.
-- Keep replies to 1-3 sentences unless Jesse explicitly asks for more detail.
+- Keep replies to 1-3 sentences unless the operator explicitly asks for more detail.
 - No markdown: no headers (##), no bullet lists, no bold (**text**), no dashes as list items.
 - Never pad with preamble like "Great question!" or "Here's what I'll do:".
-- If you remember something relevant, weave it in naturally — don't quote memory records.
+- If you remember something relevant, weave it in naturally - don't quote memory records.
 - Be honest when you don't know something. Don't make things up to fill space.
+- If asked to recall a specific fact and retrieved memory does not contain it, say you cannot find it instead of guessing.
 - Do not claim actions were executed. If something needs approval, say so in one sentence.
 """
 
@@ -78,10 +81,12 @@ class TerminalChatApp(cmd.Cmd):
         super().__init__()
         self.config = config
         self.options = options
-        # Chat conversations are episodic by nature — lower the threshold so every
+        # Chat conversations are episodic by nature, so lower the threshold so every
         # meaningful exchange gets promoted, not just keyword-heavy notes.
         self.config.importance_threshold = 0.2
         self.index_agent = MemoryIndexAgent(config)
+        self.search_agent = SearchAgent(config)
+        self.self_agent = SelfInspectionAgent(config)
         self.turns: List[ChatTurn] = _load_recent_turns(options.transcript_path, limit=6)
         self.turn_count = 0
         self.config.ensure_dirs()
@@ -200,21 +205,30 @@ class TerminalChatApp(cmd.Cmd):
 
     def handle_chat(self, user_text: str) -> ChatTurn:
         self.turn_count += 1
+        self_result = self.self_agent.handle_chat_query_with_ids(user_text)
+        search_result = None if self_result else self.search_agent.handle_chat_query_with_ids(user_text)
         user_memory_id = None
-        if not self.options.no_ingest:
+        if not self.options.no_ingest and self_result is None and search_result is None:
             user_memory_id = self._ingest_safely(f"User: {user_text}")
 
-        memories = retrieve_context(user_text, self.config, self.options.memory_limit)
-        response = build_response(
-            user_text=user_text,
-            memories=memories,
-            history=self.turns[-4:],
-            config=self.config,
-            index_agent=self.index_agent,
-        )
+        llm_used = False
+        if self_result is not None:
+            response = str(self_result["reply"])
+        elif search_result is not None:
+            response = str(search_result["reply"])
+        else:
+            memories = retrieve_context(user_text, self.config, self.options.memory_limit)
+            response = build_response(
+                user_text=user_text,
+                memories=memories,
+                history=self.turns[-4:],
+                config=self.config,
+                index_agent=self.index_agent,
+            )
+            llm_used = not response.startswith(local_fallback_prefix())
 
         assistant_memory_id = None
-        if not self.options.no_ingest:
+        if not self.options.no_ingest and self_result is None and search_result is None:
             assistant_memory_id = self._ingest_safely(f"Aeon: {response}")
 
         if self.options.auto_link:
@@ -228,8 +242,10 @@ class TerminalChatApp(cmd.Cmd):
         turn = ChatTurn(
             user=user_text,
             assistant=response,
-            memory_ids=[mid for mid in (user_memory_id, assistant_memory_id) if mid],
-            llm_used=not response.startswith(local_fallback_prefix()),
+            memory_ids=list(self_result.get("memory_ids", [])) if self_result else list(search_result.get("memory_ids", [])) if search_result else [
+                mid for mid in (user_memory_id, assistant_memory_id) if mid
+            ],
+            llm_used=llm_used,
         )
         self.turns.append(turn)
         self._append_transcript(turn)
@@ -304,7 +320,7 @@ def strip_markdown(text: str) -> str:
     """Remove markdown formatting so responses read as plain conversational text."""
     lines = []
     for line in text.splitlines():
-        # Drop header lines entirely (## Heading → drop)
+        # Drop header lines entirely.
         if re.match(r"^#{1,6}\s+", line):
             line = re.sub(r"^#{1,6}\s+", "", line)
         # Strip leading list markers (- item, * item, 1. item)
@@ -338,7 +354,7 @@ Relevant local memory:
 User message:
 {user_text}
 
-Reply as Aeon. 1-3 sentences max unless Jesse asks for more. No markdown, no headers, no bullet points. Talk like a person."""
+Reply as Aeon. 1-3 sentences max unless the operator asks for more. No markdown, no headers, no bullet points. Talk like a person."""
 
 
 def build_chat_messages(user_text: str, memories: List[Dict], history: Iterable[ChatTurn], core: str = "") -> List[Dict]:
@@ -360,9 +376,9 @@ def build_chat_messages(user_text: str, memories: List[Dict], history: Iterable[
         {
             "role": "system",
             "content": (
-                "You are Aeon, an AI built by Jesse. Talk like a person — short, warm, direct. "
+                "You are Aeon, a local AI memory assistant. Talk like a person - short, warm, direct. "
                 "No markdown, no headers, no bullet lists. Keep replies to 1-3 sentences unless asked for more. "
-                "Do not claim actions were executed."
+                "Do not claim actions were executed. If asked to recall a specific fact and memory does not contain it, say you cannot find it instead of guessing."
             ),
         },
         {"role": "user", "content": user_content},
@@ -370,8 +386,46 @@ def build_chat_messages(user_text: str, memories: List[Dict], history: Iterable[
 
 
 def retrieve_context(query: str, config: Config, limit: int) -> List[Dict]:
-    results = search(query, memory_types=["episodic", "semantic", "reflections"], config=config)
-    return results[:limit]
+    search_limit = max(limit, 10)
+    results = SearchAgent(config).results(
+        query,
+        memory_types=["semantic", "episodic", "consolidations", "reflections", "media", "raw"],
+        limit=search_limit,
+    )
+    return diversify_results(results, limit)
+
+
+def diversify_results(results: List[Dict], limit: int) -> List[Dict]:
+    """Keep chat context broad so one noisy layer cannot crowd out everything."""
+    if limit <= 0:
+        return []
+
+    selected: List[Dict] = []
+    seen_ids: set = set()
+    preferred_types = ["semantic", "episodic", "consolidations", "reflections", "media", "raw"]
+
+    for memory_type in preferred_types:
+        for result in results:
+            mem = result.get("memory", {})
+            mem_id = mem.get("id", "")
+            result_type = mem.get("type") or str(result.get("match_type", "")).split("/")[-1]
+            if result_type != memory_type or not mem_id or mem_id in seen_ids:
+                continue
+            selected.append(result)
+            seen_ids.add(mem_id)
+            break
+        if len(selected) >= limit:
+            return selected
+
+    for result in results:
+        mem_id = result.get("memory", {}).get("id", "")
+        if mem_id and mem_id not in seen_ids:
+            selected.append(result)
+            seen_ids.add(mem_id)
+        if len(selected) >= limit:
+            break
+
+    return selected
 
 
 def load_core_context(config: Config) -> str:

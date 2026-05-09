@@ -20,6 +20,7 @@ Bus topics handled
     data.write.simulate     payload: {task}
     data.write.evaluate     payload: {simulation, result_text}
     data.write.select_task  payload: {}
+    data.write.consolidate  payload: {}
 
 The agent is instantiated by the Orchestrator on startup and lives for
 the duration of the orchestrator's lifetime. Call close() to cleanly
@@ -30,6 +31,7 @@ from typing import Dict, Optional, Tuple
 from .approval_agent import AuthProvider, CLIAuthProvider
 from .bus import get_bus
 from .config import Config
+from .consolidate import consolidate_memories
 from .decision import select_next_task
 from .evaluate import evaluate_simulation
 from .ingest import ingest
@@ -73,6 +75,7 @@ class DataWriteAgent:
         bus.subscribe("data.write.simulate",    self._handle_simulate)
         bus.subscribe("data.write.evaluate",    self._handle_evaluate)
         bus.subscribe("data.write.select_task", self._handle_select_task)
+        bus.subscribe("data.write.consolidate", self._handle_consolidate)
 
     def close(self) -> None:
         """Unsubscribe from all write topics — call when the orchestrator shuts down."""
@@ -82,6 +85,7 @@ class DataWriteAgent:
         bus.unsubscribe("data.write.simulate",    self._handle_simulate)
         bus.unsubscribe("data.write.evaluate",    self._handle_evaluate)
         bus.unsubscribe("data.write.select_task", self._handle_select_task)
+        bus.unsubscribe("data.write.consolidate", self._handle_consolidate)
 
     # ------------------------------------------------------------------ approval gate
 
@@ -212,3 +216,22 @@ class DataWriteAgent:
 
         with write_authorized_context():
             return select_next_task(config=self._config)
+
+    def _handle_consolidate(self, message: Dict) -> Dict:
+        approved, reason = self._approve(
+            "consolidate_memories", message,
+            {
+                "type": "consolidate",
+                "content": (
+                    "Find likely duplicate episodic/semantic memories and append "
+                    "consensus records. Source memories are never deleted or rewritten."
+                ),
+                "confidence": 1.0,
+            },
+        )
+        if not approved:
+            return {"created": [], "created_count": 0,
+                    "message": f"rejected: {reason}", "rejected": True}
+
+        with write_authorized_context():
+            return consolidate_memories(config=self._config)

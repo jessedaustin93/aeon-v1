@@ -81,6 +81,28 @@ Recursive analysis of what has been stored. Always appended, never replaced.
 - **Append-only:** Every `reflect()` call creates a new file. Prior reflections are never modified.
 - **Safety limits:** Only reviews episodic and semantic memories (not prior reflections, unless `config.allow_reflection_on_reflections = True`).
 
+### Consolidations
+
+Append-only consensus records for likely duplicate or overlapping memories.
+
+- **Created by:** `consolidate_memories()`, the `consolidator` agent during orchestrator ticks, or background count-driven maintenance after new memories are written
+- **Stored at:** `memory/consolidations/{id}.json`, `vault/consolidations/{id}.md`
+- **Key fields:** `content`, `source_ids`, `source_types`, `links`
+- **Purpose:** Preserve source memories while adding a human-readable consensus note.
+- **Safety contract:** Consolidation never deletes, rewrites, or merges source records. It only appends a new record that links back to the originals.
+- **Default background trigger:** every 5 new raw/episodic/semantic memories while an Aeon process is alive (`Config.consolidation_trigger_interval`).
+
+### Media
+
+Append-only records for uploaded images and, later, video/audio inputs.
+
+- **Created by:** dashboard image upload or `ingest_image_file()` / `ingest_image_bytes()`
+- **Stored at:** `memory/media/{id}.json`, `vault/media/{id}.md`
+- **Original files:** copied under `memory/media/uploads/`
+- **Key fields:** `media_type`, `source_path`, `original_name`, `description`, `analysis_status`, `analysis_model`
+- **Vision model:** optional LM Studio model from `Config.llm_vision_model` / `AEON_V1_LLM_VISION_MODEL`
+- **Safety contract:** The uploaded file is preserved. If analysis fails, Aeon records `analysis_status: unavailable` rather than discarding the file.
+
 ### Tasks and Agents
 
 Human-maintained operational notes.

@@ -1,43 +1,73 @@
 # Aeon-V1
 
-Aeon-V1 is a **local-first recursive AI memory and learning system** built on plain JSON and Markdown files.
+Aeon-V1 is a local-first AI memory, chat, and learning system. It stores what happens in plain local files, reflects on those records, exposes a local dashboard, can use LM Studio models when available, and keeps the operator in control of any write-governed behavior.
 
-It stores raw inputs, promotes important memories into episodic and semantic layers, reflects on what it has learned, turns reflections into tasks, simulates possible actions, and gates agent-initiated writes through a human approval pipeline. The system is designed to stay inspectable: every durable record lives in `memory/` for machines and, where useful, in `vault/` for humans and Obsidian.
+The short version: Aeon is not a single text file and it is not a cloud chatbot wrapper. It is a local program made of memory stores, agents, a dashboard, optional local LLM routing, Obsidian-readable notes, and tests that keep the pieces honest.
 
-Aeon-V1 is not an autonomous executor. It is a governed memory and reasoning substrate with a chat-style front door.
+## What Is In This Repo
 
----
+| Area | What it does | Where to read more |
+|---|---|---|
+| Source package | Core Python modules for memory, chat, agents, dashboard, LLM routing, media, governance, and self-inspection | [src/aeon_v1/README.md](src/aeon_v1/README.md) |
+| Scripts | Command-line and launcher entry points | [scripts/README.md](scripts/README.md) |
+| Memory store | Machine-readable JSON memory records and runtime state | [memory/README.md](memory/README.md) |
+| Obsidian vault | Human-readable Markdown view of memory | [vault/README.md](vault/README.md) |
+| Documentation | Architecture, setup, tools, Obsidian, recursive loop, and memory model docs | [docs/README.md](docs/README.md) |
+| Tests | Regression tests for the implemented system | [tests/README.md](tests/README.md) |
+| Local overrides | Ignored machine-specific launcher configuration | [local/README.md](local/README.md) |
+| Firmware | Optional ESP32-S3 hardware approval device | [firmware/esp32s3-auth-device/README.md](firmware/esp32s3-auth-device/README.md) |
 
 ## Current Capabilities
 
-| Area | Status | Main modules |
-|---|---|---|
-| Chat-style terminal interface | Implemented | `chat_cli.py`, `scripts/aeon_chat.py`, `Aeon Chat.bat` |
-| Raw memory ingestion | Implemented | `ingest.py`, `memory_store.py` |
-| Episodic and semantic promotion | Implemented | `ingest.py`, `memory_store.py` |
-| Recursive reflection | Implemented | `reflect.py` |
-| Task creation from reflections | Implemented | `tasks.py` |
-| Decision selection | Implemented | `decision.py` |
-| Action simulation | Implemented, simulation-only | `simulate.py` |
-| Tool definitions and tool-call records | Implemented | `tools.py`, `builtin_tools.py`, `tool_calls.py` |
-| Simulation evaluation | Implemented | `evaluate.py` |
-| Agent nodes and orchestrator | Implemented | `agent.py`, `orchestrator.py` |
-| Layer 7 write governance | Implemented and locked | `schemas.py`, `security.py`, `approval_agent.py`, `write_agent.py` |
-| Manifest drift monitoring | Implemented | `manifest_agent.py` |
-| Optional LLM reasoning | Implemented, including LM Studio model roles | `llm.py`, `memory_index_agent.py` |
-| Obsidian vault integration | Implemented, optional/local | `vault/`, `linker.py`, `docs/obsidian.md` |
-| ESP32-S3 hardware approval token | Implemented | `hardware_auth_provider.py`, `firmware/esp32s3-auth-device/` |
-| Vector embeddings | Planned | `search.py` is vector-ready |
-| Real command execution | Out of scope | No execution path exists |
+Aeon-V1 currently supports:
 
----
+- Local chat through terminal and browser dashboard.
+- Raw, episodic, semantic, reflection, consolidation, and media memory layers.
+- Natural-language memory search for questions like "what do you remember about X?"
+- Read-only self-inspection for questions like "what can you do?" and "how do you work?"
+- Image upload and image memory through an optional LM Studio vision model.
+- Optional LM Studio model routing for chat, general reasoning, deep reasoning, vision, and embeddings.
+- Obsidian vault output with Markdown notes and wikilinks.
+- An always-on local runner for background linking and memory-growth consolidation.
+- Append-only duplicate consolidation that writes summaries without erasing source records.
+- Task, decision, simulation, evaluation, and governed write pipelines.
+- Manifest drift monitoring for tool/schema changes.
+- Optional ESP32-S3 hardware approval support.
+- A pytest suite covering the system behavior.
+
+Planned or future work includes vector embeddings, richer audio/video ingestion, stronger service supervision, more local provider options, and packaged deployment.
+
+## How The Main Pieces Fit
+
+```text
+Human chat / dashboard
+        |
+        v
+chat_cli.py / dashboard.py
+        |
+        +--> SelfInspectionAgent reads repo docs/source map for "what are you?" questions
+        +--> SearchAgent reads stored memories for "what do you remember?" questions
+        +--> LLM adapter uses LM Studio or Anthropic when enabled
+        |
+        v
+MemoryStore writes JSON in memory/
+        |
+        +--> raw records preserve exact inputs
+        +--> episodic/semantic records derive useful summaries and concepts
+        +--> media records store analyzed image descriptions
+        +--> reflections/consolidations add append-only synthesis
+        |
+        v
+vault/ mirrors useful records as Markdown for Obsidian
+```
+
+The dashboard and runner sit beside this flow. The dashboard is the local control surface. The runner keeps background maintenance alive after you manually start Aeon.
 
 ## Quick Start
 
-For a fresh GitHub download, see `docs/setup_from_github.md` for the full
-install, LLM, LM Studio, Anthropic, Obsidian, and optional hardware checklist.
+For a fresh GitHub download, read [docs/setup_from_github.md](docs/setup_from_github.md). That file has the full setup path for Python, editable install, LM Studio, Obsidian, and optional hardware.
 
-### Install
+Basic install:
 
 ```bash
 git clone https://github.com/jessedaustin93/aeon-v1
@@ -45,557 +75,148 @@ cd aeon-v1
 pip install -e ".[dev]"
 ```
 
-Optional extras:
-
-```bash
-pip install anthropic        # Optional Claude/Anthropic LLM support
-pip install -e ".[hardware]" # Optional ESP32-S3 USB approval provider
-```
-
-### Open The Chat Interface
-
-On Windows, double-click:
-
-```text
-Aeon Chat.bat
-```
-
-Or launch from a terminal:
-
-```bash
-python scripts/aeon_chat.py
-```
-
-If installed in editable mode, you can also run:
-
-```bash
-aeon-chat
-```
-
-Inside the chat, type naturally. Aeon stores the conversation, searches local memory for context, uses the configured LLM when available, and falls back to local memory summaries when LLM mode is off.
-
-Useful chat commands:
-
-```text
-/help              show commands
-/status            show memory + LLM status
-/memory <query>    search local memory
-/reflect           run one reflection pass
-/tick              run one orchestrator cycle
-/transcript        show transcript path
-/exit              close the chat
-```
-
-### Run Tests
+Run tests:
 
 ```bash
 pytest
 ```
 
-### Ingest Memory Directly
+Open terminal chat:
 
 ```bash
-python scripts/ingest_text.py "I learned that layered memory systems are more robust than flat logs."
-python scripts/ingest_text.py --file my_notes.txt --source journal
-echo "Important project goal: ship Aeon-V1 v1." | python scripts/ingest_text.py
+python scripts/aeon_chat.py
 ```
 
-### Reflect, Decide, Simulate
+Open the local dashboard:
 
 ```bash
-python scripts/run_reflection.py
-python scripts/manage_tasks.py tasks
-python scripts/manage_tasks.py decide
-python scripts/manage_tasks.py simulate
-python scripts/manage_tasks.py loop
+python scripts/aeon_launcher.py
 ```
 
-### Search And Link
+On Windows, you can also use:
 
-```bash
-python scripts/search_memory.py "recursive learning"
-python scripts/search_memory.py "goal" --types episodic semantic
+```text
+Aeon Chat.bat
+Aeon Launcher.bat
 ```
 
-```python
-from aeon_v1 import Config, link_memories
+The dashboard defaults to:
 
-link_memories(config=Config())
+```text
+http://127.0.0.1:8765
 ```
 
----
+## Local LLM Setup
 
-## Chat Interface
+Aeon can run without an LLM. When an LLM is enabled, it is an optional reasoning and response layer, not the memory store itself.
 
-`chat_cli.py` is the first normal-user interface for Aeon. It sits between a plain CLI and a full UI: simple enough to launch from an icon, but wired into the memory system.
+Recommended local setup:
 
-Per chat turn, it can:
+1. Install LM Studio.
+2. Load the models you want to use.
+3. Copy `.env.lmstudio.template` to `.env`.
+4. Set the model role variables in `.env`.
+5. Start the LM Studio local server.
+6. Launch Aeon.
 
-- Store the user message as memory.
-- Retrieve relevant episodic, semantic, and reflection context.
-- Build an Aeon-style response prompt.
-- Use the configured LLM through `generate_text()` or `generate_with_memory()`.
-- Fall back to a local-memory answer if LLM mode is unavailable.
-- Store Aeon's reply as memory.
-- Link related vault notes.
-- Optionally run reflection every N turns.
-- Optionally run `Orchestrator.tick()` after every turn.
-- Append a JSONL transcript under `memory/chat/`.
+Important model roles:
 
-Launch options:
-
-```bash
-python scripts/aeon_chat.py --help
-python scripts/aeon_chat.py --reflect-every 5
-python scripts/aeon_chat.py --auto-tick
-python scripts/aeon_chat.py --transcript off
-python scripts/aeon_chat.py --no-ingest
+```text
+AEON_V1_LLM_MODEL          general fallback model
+AEON_V1_LLM_CHAT_MODEL     normal chat model
+AEON_V1_LLM_DEEP_MODEL     deeper reasoning/tool-call model
+AEON_V1_LLM_SEARCH_MODEL   memory-search planner model
+AEON_V1_LLM_VISION_MODEL   image understanding model
+AEON_V1_LLM_BASE_URL       usually http://localhost:1234/v1
 ```
 
-The default mode avoids heavy background orchestration. It ingests, searches, responds, links memory, and logs the transcript. Use `/reflect`, `/tick`, `--reflect-every`, or `--auto-tick` when you want the deeper loops running from the chat shell.
+Recommended local split:
 
----
+```text
+Chat:   Qwen chat/instruct model
+Deep:   Qwen thinking/reasoning model
+Search: Mistral/Ministral-style model for planning memory queries
+Vision: Qwen VL or another vision-capable model
+```
 
-## Core Design
+The search model does not become Aeon's chat voice. It only helps `SearchAgent` turn fuzzy recall questions into concrete memory search terms.
 
-Aeon-V1 keeps two synchronized views of memory:
+See [docs/setup_from_github.md](docs/setup_from_github.md) and [docs/tools_manifest.md](docs/tools_manifest.md) for more.
 
-| Store | Purpose |
-|---|---|
-| `memory/` | Machine-readable JSON records, schemas, logs, staging, approvals |
-| `vault/` | Human-readable Markdown notes for Obsidian or any text editor |
+## Memory And Truth Modes
 
-Raw memory is preserved because summaries lose information. Episodic and semantic memories are derived views, not replacements. Reflections and decisions are append-only records, so the system can be audited later.
+Aeon has multiple answer paths. This matters when checking whether it is remembering or generating.
 
-Everything is local by default. No database is required. No cloud service is required. LLM calls are optional.
-
----
-
-## Memory Layers
-
-| Layer | Directories | Purpose |
+| User asks | Path used | What to look for |
 |---|---|---|
-| Raw | `memory/raw/`, `vault/raw/` | Exact verbatim captures |
-| Episodic | `memory/episodic/`, `vault/episodic/` | Event-like summaries of important inputs |
-| Semantic | `memory/semantic/`, `vault/semantic/` | Concepts, reusable rules, and patterns |
-| Core | `vault/core/` | Stable identity, long-term rules, goals; human-gated |
-| Reflections | `memory/reflections/`, `vault/reflections/` | Recursive analysis of episodic and semantic memory |
-| Tasks | `memory/tasks/`, `vault/tasks/` | Suggested actions derived from reflections |
-| Decisions | `memory/decisions/`, `vault/decisions/` | Append-only task selection records |
-| Simulations | `memory/simulations/`, `vault/simulations/` | Proposed actions and risk analysis; no execution |
-| Tool calls | `memory/tool_calls/`, `vault/tool_calls/` | Structured pending tool-call records from simulations |
-| Agents | `memory/agents/`, `vault/agents/` | Agent node lifecycle records and tool definitions |
-| Chat | `memory/chat/` | JSONL transcripts from the terminal chat interface |
-| Governance | `memory/staging/`, `memory/approved/`, `memory/logs/` | Layer 7 proposal, approval, commit, and audit trail |
-| Tool additions | `memory/tool_additions/` | Approved tool additions proposed through Layer 7 |
-| Orchestrator | `memory/orchestrator/` | Live agent-pool manifest |
+| "What do you remember about X?" | `SearchAgent` over `memory/` | `llm_used=false`, memory IDs from stored records |
+| "What are you?" or "What can you do?" | `SelfInspectionAgent` over repo docs/source map | `llm_used=false`, source IDs like `self:README.md` |
+| Normal conversation | LLM when enabled, with retrieved context | `llm_used=true` unless fallback |
+| Image upload | `media.py` plus optional vision model | media record in `memory/media/` |
 
----
+The clearest proof of real memory is a deterministic canary:
 
-## Recursive Loop
+1. Store a strange exact phrase.
+2. Ask Aeon to remember that exact phrase.
+3. Confirm `llm_used=false`.
+4. Confirm the reply includes the memory ID and exact stored content.
 
-```text
-Input text
-  -> raw memory
-  -> episodic memory, if importance >= threshold
-  -> semantic memory, if concept signals are present
-  -> reflection over episodic + semantic memory
-  -> suggested tasks
-  -> decision record
-  -> simulation record
-  -> human review / governed write
-  -> new input
-```
+## Safety Model
 
-`reflect()` produces a seven-section reflection note:
+Aeon is local-first and file-backed.
 
-1. What Was Learned
-2. Important Memories Reviewed
-3. New Patterns Noticed
-4. Conflicts or Uncertainty
-5. Suggested Tasks
-6. Suggested Core Memory Updates
-7. Reflection Quality
+- Raw memory is append-only and preserved verbatim.
+- Derived memories do not replace raw records.
+- Reflection and consolidation append new records instead of deleting old ones.
+- Core vault files are human-gated.
+- Agent-proposed writes go through validation and approval paths.
+- Real command execution is out of scope for Aeon-V1.
+- Machine-specific launcher paths stay in ignored local config.
 
-Reflections do not write to `vault/core/`. Core updates are suggestions only.
-
----
-
-## Layer 3: Tasks, Decisions, Simulations
-
-Every reflection can create task objects from `suggested_tasks`. Near-duplicates are blocked with Jaccard word-overlap, and pending task count is capped by config.
-
-`select_next_task()` scores pending tasks by:
+## Directory Map
 
 ```text
-priority * 0.5 + confidence * 0.3
+README.md                     system overview
+docs/                         human documentation
+scripts/                      runnable entry points
+src/aeon_v1/                  core package
+memory/                       machine-readable records and runtime state
+vault/                        Markdown/Obsidian view of memory
+local/                        ignored local launcher overrides
+tests/                        pytest suite
+firmware/esp32s3-auth-device/ optional hardware approval device
 ```
 
-`simulate_action(task)` creates a local simulation record with:
+Each major directory has its own README so operators can understand that section without reading every source file.
 
-- Proposed action
-- Expected outcome
-- Risk signals
-- Required human approval flag
-- Optional matched tool call
-- LLM metadata if LLM enhancement was used
+## Good First Files To Read
 
-Simulation remains file-only. `simulate.py` does not import or call subprocess, shell, network, `exec`, or `eval` primitives.
+Start here:
 
----
+1. [docs/setup_from_github.md](docs/setup_from_github.md) - install and run from a fresh clone.
+2. [src/aeon_v1/README.md](src/aeon_v1/README.md) - how the Python modules fit together.
+3. [memory/README.md](memory/README.md) - what each memory layer means.
+4. [vault/README.md](vault/README.md) - how Obsidian fits in.
+5. [scripts/README.md](scripts/README.md) - how to launch and operate Aeon.
 
-## Layer 4: Optional LLM Reasoning
+## Development
 
-Aeon-V1 runs without an LLM. If enabled, LLM output enhances reflection, simulation, and chat responses while the file-based system remains the source of truth.
-
-LLM support is fail-safe: missing packages, unavailable local servers, API failures, empty model responses, or disabled config all fall back to rule-based behavior.
-
-### LM Studio Mode
-
-LM Studio is the recommended local model path. Aeon talks to LM Studio through its OpenAI-compatible HTTP server and does not require an extra Python package.
-
-Start from the template:
+Install with development dependencies:
 
 ```bash
-cp .env.lmstudio.template .env
+pip install -e ".[dev]"
 ```
 
-PowerShell:
-
-```powershell
-Copy-Item .env.lmstudio.template .env
-```
-
-Then replace the placeholder model IDs in `.env` with the exact IDs shown in LM Studio.
-
-Aeon supports three LM Studio model roles:
-
-| Variable | Purpose |
-|---|---|
-| `AEON_V1_LLM_CHAT_MODEL` | Fast model for interactive chat responses |
-| `AEON_V1_LLM_MODEL` | General model for normal LLM reasoning calls |
-| `AEON_V1_LLM_DEEP_MODEL` | Deeper model for tool-calling reflection/simulation paths |
-
-You can point all three variables at the same model, or split them across fast/general/deep models. This makes it easy to swap any LM Studio model in later without changing code.
-
-LM Studio defaults:
-
-```env
-AEON_V1_LLM=1
-AEON_V1_LLM_PROVIDER=lmstudio
-AEON_V1_LLM_BASE_URL=http://localhost:1234/v1
-AEON_V1_LLM_CHAT_MODEL=your-fast-chat-model-id
-AEON_V1_LLM_MODEL=your-general-model-id
-AEON_V1_LLM_DEEP_MODEL=your-deep-reasoning-model-id
-```
-
-### Parallel LM Studio Calls
-
-The LM Studio adapter supports concurrent callers. Outbound LM Studio HTTP requests are guarded by a hard cap of 10 in-flight requests so parallel chat, reflection, simulation, and tool-calling paths can overlap without overwhelming the local server.
-
-The test suite includes a threaded fake LM Studio server that verifies:
-
-- parallel requests overlap at the HTTP layer,
-- more than 10 concurrent LM Studio calls are refused cleanly,
-- chat/general/deep model IDs are routed in the actual request payloads,
-- deep tool-calling falls back to a no-tools deep request if the model or server rejects tool payloads.
-
-The orchestrator itself is still synchronous. Parallel LLM behavior is available when multiple callers invoke the LM Studio adapter at the same time; it does not make Aeon an autonomous executor.
-
-### Tool Calling
-
-Set this to enable sparse prompt mode:
-
-```env
-AEON_V1_LLM_TOOL_CALLING=1
-```
-
-When tool calling is enabled, reflection and simulation use `MemoryIndexAgent` through the message bus. The model can call `query_memory` to retrieve bounded local context instead of receiving all memories inlined in the prompt.
-
-Not every LM Studio model handles OpenAI-style tool calling well. If the tool-calling request fails or returns no final content, Aeon retries the same deep model without tools and then falls back to rule-based behavior if needed.
-
-Reasoning models may spend part of their token budget in hidden or separate reasoning fields before producing final `content`. If a thinking model returns empty content, increase `AEON_V1_LLM_MAX_TOKENS` or use a non-thinking model for the affected role.
-
-### Anthropic Mode
-
-Enable Anthropic/Claude mode:
+Run the full test suite:
 
 ```bash
-export AEON_V1_LLM=1
-export ANTHROPIC_API_KEY=your_key_here
+pytest
 ```
 
-PowerShell:
-
-```powershell
-$env:AEON_V1_LLM="1"
-$env:ANTHROPIC_API_KEY="your_key_here"
-```
-
-Useful environment variables:
-
-| Variable | Purpose |
-|---|---|
-| `AEON_V1_LLM` | Set to `1` to enable LLM calls |
-| `AEON_V1_LLM_PROVIDER` | Provider name; defaults to `anthropic` |
-| `AEON_V1_LLM_CHAT_MODEL` | Chat model name; defaults to `AEON_V1_LLM_MODEL` |
-| `AEON_V1_LLM_MODEL` | General model name; defaults from `Config` |
-| `AEON_V1_LLM_DEEP_MODEL` | Deep/tool-calling model name; defaults to `AEON_V1_LLM_MODEL` |
-| `AEON_V1_LLM_MAX_TOKENS` | Max response tokens |
-| `AEON_V1_LLM_TIMEOUT` | Request timeout seconds |
-| `AEON_V1_LLM_CHAT_TIMEOUT` | Chat request timeout seconds |
-| `AEON_V1_LLM_MAX_ATTEMPTS` | Retry count for LM Studio calls and tool-call rounds |
-| `AEON_V1_LLM_REASONING_EFFORT` | Reasoning effort value passed to LM Studio when supported |
-| `AEON_V1_LLM_BASE_URL` | Local/OpenAI-compatible server URL |
-| `AEON_V1_LLM_TOOL_CALLING` | Set to `1` to let the LLM query memory through `MemoryIndexAgent` |
-
----
-
-## Layer 5: Tools And Tool Calls
-
-Aeon-V1 has a definition-only tool registry:
-
-- `ToolDefinition` describes a tool name, description, JSON-schema-like parameters, tags, layer, enabled flag, and approval requirement.
-- `ToolRegistry` persists tool definitions to `memory/schemas/tools/` and `vault/agents/`.
-- `builtin_tools.py` defines `file_read`, `file_write`, and `command_preview` as built-in tool slots.
-
-No registered tool is executed by the registry.
-
-During simulation, `_match_tool_call()` can map a task description to a registered tool and create a `pending_review` tool-call record through `ToolCallStore`. These records are auditable proposals, not executions.
-
----
-
-## Layer 6: Agent Nodes And Orchestrator
-
-`AgentNode` is a single-purpose lifecycle-managed unit:
-
-```text
-spawn() -> run() -> dissolve()
-```
-
-Supported roles:
-
-| Role | Purpose |
-|---|---|
-| `thinker` | Runs reflection |
-| `executor` | Selects or receives a task, then simulates it |
-| `monitor` | Watches memory growth and can trigger reflection |
-| `evaluator` | Evaluates simulations against observed results |
-| `custom` | Caller-defined role with a required description |
-
-`Orchestrator.tick()` coordinates one synchronous work cycle:
-
-1. Ensures and runs a monitor agent.
-2. Fills the thinker pool up to `Config.max_thinking_agents`.
-3. Runs thinkers.
-4. Spawns an executor for one pending task.
-5. Spawns an evaluator for one unreviewed simulation.
-6. Dissolves task-specific agents and persists the pool manifest.
-
-Layer 6 still does not execute system commands. It coordinates memory, reflection, simulation, and evaluation only.
-
----
-
-## Layer 7: Governed Writes
-
-Layer 7 enforces a proposal-to-commit pipeline for agent-initiated memory writes:
-
-```text
-create_proposal()
-  -> memory/staging/{trace_id}.json
-  -> ValidationAgent.validate_proposal()
-  -> ApprovalAgent.approve_proposal()
-  -> WriteAgent.commit_proposal()
-  -> memory/approved/{trace_id}.json + memory/logs/audit.jsonl
-```
-
-Key modules:
-
-| Module | Responsibility |
-|---|---|
-| `schemas.py` | Pure schema factories and validators |
-| `security.py` | `PathGuard`, `AuditLog`, `ValidationAgent` |
-| `approval_agent.py` | `AuthProvider`, `CLIAuthProvider`, `ApprovalAgent` |
-| `write_agent.py` | `create_proposal()`, `WriteAgent`, approved commit handling |
-
-Safety rules:
-
-- No auto-approval path exists.
-- `WriteAgent` commits only proposals with status `approved_for_commit`.
-- All Layer 7 actions append to `memory/logs/audit.jsonl`.
-- Path traversal is blocked by `PathGuard`.
-- Suspicious content is flagged for human review, not silently accepted.
-- `vault/core/` is not written by Layer 7.
-- Layer 7 stable modules are marked: `LAYER 7 STABLE - DO NOT MODIFY WITHOUT EXPLICIT INSTRUCTION`.
-
-`AuthProvider` is the plug-in point for approval mechanisms. The default is CLI yes/no approval; the ESP32-S3 provider is available for hardware approval.
-
----
-
-## ESP32-S3 Hardware Approval Device
-
-Aeon includes a dedicated one-button USB approval token for Layer 7.
-
-Files:
-
-| Path | Purpose |
-|---|---|
-| `src/aeon_v1/hardware_auth_provider.py` | PC-side `ESP32S3AuthProvider(AuthProvider)` |
-| `firmware/esp32s3-auth-device/` | PlatformIO firmware for ESP32-S3 native USB CDC |
-| `docs/auth_device.md` | Integration guide and protocol notes |
-
-Install the optional serial dependency:
+Run focused tests while working:
 
 ```bash
-pip install -e ".[hardware]"
+pytest tests/test_chat_cli.py tests/test_search_agent.py tests/test_self_inspection_agent.py -q
 ```
 
-Use it with `ApprovalAgent`:
-
-```python
-from aeon_v1 import ApprovalAgent, Config, ESP32S3AuthProvider
-
-agent = ApprovalAgent(
-    Config(),
-    auth_provider=ESP32S3AuthProvider(port="COM5"),  # omit port for auto-discovery
-)
-agent.process_queue()
-```
-
-Flash the firmware:
-
-```bash
-cd firmware/esp32s3-auth-device
-pio run -t upload
-pio device monitor
-```
-
-Hardware defaults:
-
-- `GPIO0` button to `GND`, using internal pull-up; many boards use the built-in BOOT button.
-- `GPIO48` optional status LED.
-- Native USB CDC serial at `115200`.
-
-Protocol shape:
-
-```json
-{"type":"approval_request","id":"proposal-trace-id","summary":"semantic memory write","expires_ms":30000}
-```
-
-```json
-{"type":"approval","id":"proposal-trace-id","approved":true,"method":"button_hold","held_ms":1007}
-```
-
-The firmware ignores button presses unless a request is armed, binds approval to the exact proposal id, requires a one-second hold, and expires requests automatically.
-
----
-
-## Manifest Agent
-
-`ManifestAgent` keeps `docs/tools_manifest.md` honest.
-
-It can:
-
-- Parse manifest tool headings.
-- Scan Python imports and dependency declarations.
-- Report drift between documented tools and code dependencies.
-- Propose tool additions through the full Layer 7 pipeline.
-- Store approved tool additions in `memory/tool_additions/`.
-
-The agent can propose changes, but cannot commit them directly. Governed additions still require validation, approval, and `WriteAgent` commit.
-
----
-
-## Obsidian Vault
-
-Open `vault/` as an Obsidian vault for graph view, backlinks, and human-readable memory inspection.
-
-Every Markdown note uses frontmatter and stable wikilinks. IDs are stable; titles are human-readable. Filenames use IDs, and links use `[[subdir/id|title]]` so notes remain readable and resolvable.
-
-Obsidian is optional. The vault is plain Markdown.
-
-To use it locally, install Obsidian, choose **Open folder as vault**, and select:
-
-```text
-aeon-v1/vault/
-```
-
-Do not commit `vault/.obsidian/`; it is local app/workspace state and is ignored by Git. See `docs/obsidian.md` for setup and operating details.
-
----
-
-## Project Structure
-
-```text
-aeon-v1/
-  .env.lmstudio.template      Generic LM Studio environment template
-  src/aeon_v1/
-    agent.py                  Layer 6 agent node lifecycle
-    approval_agent.py         Layer 7 human approval gate
-    builtin_tools.py          Built-in tool definitions
-    chat_cli.py               Terminal chat interface
-    config.py                 Paths, limits, LLM/env configuration
-    decision.py               Task selection engine
-    evaluate.py               Simulation evaluation
-    hardware_auth_provider.py ESP32-S3 AuthProvider implementation
-    ingest.py                 Raw -> episodic -> semantic promotion
-    linker.py                 Obsidian wikilink generation
-    llm.py                    Optional LLM adapter and tool-calling loop
-    manifest_agent.py         Tools manifest drift and governed additions
-    memory_index_agent.py     query_memory handler for LLM tool calls
-    memory_store.py           JSON + Markdown memory storage
-    orchestrator.py           Agent pool coordination
-    reflect.py                Reflection engine
-    schemas.py                Layer 7 schemas and validators
-    search.py                 Keyword search, vector-ready interface
-    security.py               PathGuard, AuditLog, ValidationAgent
-    simulate.py               Action simulation and tool-call matching
-    tasks.py                  Task storage and deduplication
-    time_utils.py             UTC storage and local display helpers
-    tool_calls.py             Tool-call record storage
-    tools.py                  Tool registry
-    write_agent.py            Governed write commit stage
-  scripts/
-    aeon_chat.py
-    ingest_text.py
-    manage_tasks.py
-    run_reflection.py
-    search_memory.py
-  firmware/
-    esp32s3-auth-device/
-  docs/
-  memory/
-  vault/
-  tests/
-```
-
----
-
-## Safety Guarantees
-
-Aeon-V1 is intentionally conservative:
-
-- Raw memories are append-only.
-- Reflections do not write core memory.
-- Simulations do not execute actions.
-- Tool definitions do not call tools.
-- Tool-call records are pending review records.
-- Chat stores conversation memory and retrieves context; it does not bypass Layer 7.
-- Agent nodes do not call shell, subprocess, network, `exec`, or `eval` primitives.
-- Layer 7 requires validation and human approval before agent-initiated writes commit.
-- The hardware auth device is only a physical approval signal; it cannot commit memory by itself.
-
-Humans remain in the loop at the points where state changes matter.
-
----
-
-## More Documentation
-
-- `docs/architecture.md` - system layout and data flow
-- `docs/setup_from_github.md` - fresh clone setup checklist
-- `docs/obsidian.md` - optional local Obsidian vault workflow
-- `docs/memory_model.md` - memory layer specification
-- `docs/recursive_learning_loop.md` - ingestion, reflection, task, and simulation cycle
-- `docs/INTEGRATION_STATUS.md` - implementation status and planned integrations
-- `docs/tools_manifest.md` - tools, dependencies, hardware, and planned additions
-- `docs/auth_device.md` - ESP32-S3 approval-token details
+Keep private local memory and machine-specific app paths out of Git unless they are intentionally generalized examples.

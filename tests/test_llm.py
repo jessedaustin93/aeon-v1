@@ -25,8 +25,11 @@ from aeon_v1 import Config, generate_text, ingest, reflect, simulate_action
 from aeon_v1.llm import (
     build_reflection_prompt,
     build_simulation_prompt,
+    generate_image_description,
+    _detect_lmstudio_vision_model,
     parse_reflection_sections,
     parse_simulation_sections,
+    resolve_lmstudio_vision_model,
 )
 from aeon_v1.tasks import TaskStore
 
@@ -111,6 +114,64 @@ def test_generate_text_returns_none_on_api_error(monkeypatch):
     with patch("aeon_v1.llm._call_anthropic", return_value=None):
         result = generate_text("hello", cfg)
     assert result is None
+
+
+def test_generate_image_description_uses_vision_model_and_no_reasoning(tmp_path):
+    image = tmp_path / "tiny.png"
+    image.write_bytes(base64_png_bytes())
+    cfg = Config(tmp_path)
+    cfg.llm_enabled = True
+    cfg.llm_provider = "lmstudio"
+    cfg.llm_vision_model = "vendor/vision-model"
+    cfg.llm_reasoning_effort = "low"
+
+    with patch("aeon_v1.llm._call_lmstudio_messages", return_value="vision ok") as call:
+        result = generate_image_description(image, "describe", cfg)
+
+    assert result == "vision ok"
+    kwargs = call.call_args.kwargs
+    assert kwargs["model"] == "vendor/vision-model"
+    assert kwargs["include_reasoning"] is False
+
+
+def test_generate_image_description_falls_back_to_native_endpoint(tmp_path):
+    image = tmp_path / "tiny.png"
+    image.write_bytes(base64_png_bytes())
+    cfg = Config(tmp_path)
+    cfg.llm_enabled = True
+    cfg.llm_provider = "lmstudio"
+    cfg.llm_vision_model = "vendor/vision-model"
+
+    with patch("aeon_v1.llm._call_lmstudio_messages", return_value=None), \
+         patch("aeon_v1.llm._call_lmstudio_native_image", return_value="native ok") as native:
+        result = generate_image_description(image, "describe", cfg)
+
+    assert result == "native ok"
+    assert native.call_args.kwargs["model"] == "vendor/vision-model"
+
+
+def test_detect_lmstudio_vision_model_from_loaded_models(monkeypatch):
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self):
+            return b'{"data":[{"id":"vendor/chat-model"},{"id":"vendor/vision-model-vl"}]}'
+
+    monkeypatch.setattr("aeon_v1.llm.urllib.request.urlopen", lambda *_, **__: FakeResponse())
+
+    assert _detect_lmstudio_vision_model(Config()) == "vendor/vision-model-vl"
+
+
+def test_resolve_lmstudio_vision_model_prefers_explicit_config(monkeypatch):
+    monkeypatch.setattr("aeon_v1.llm._detect_lmstudio_vision_model", lambda _: "vendor/vision-model-vl")
+    cfg = Config()
+    cfg.llm_vision_model = "explicit-vision"
+
+    assert resolve_lmstudio_vision_model(cfg) == "explicit-vision"
 
 
 # ---------------------------------------------------------------------------
@@ -459,6 +520,13 @@ def _tmp_config(tmp_path: Path) -> Config:
     cfg.memory_path = tmp_path / "memory"
     cfg.vault_path = tmp_path / "vault"
     return cfg
+
+
+def base64_png_bytes() -> bytes:
+    import base64
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    )
 
 
 def _assert_all_7_sections(content: str) -> None:

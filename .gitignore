@@ -31,13 +31,18 @@ vault/.obsidian/
 # Local tooling / work dirs
 .claude/
 _work/
+local/launcher_config.json
 
 # Aeon-V1 runtime data (keep schemas; ignore generated memory files)
 memory/raw/*.json
 memory/episodic/*.json
 memory/semantic/*.json
 memory/reflections/*.json
+memory/consolidations/*.json
+memory/media/*.json
+memory/media/uploads/
 memory/chat/
+memory/runtime/
 memory/decisions/
 memory/simulations/
 memory/tasks/
@@ -45,6 +50,8 @@ vault/raw/*.md
 vault/episodic/*.md
 vault/semantic/*.md
 vault/reflections/*.md
+vault/consolidations/*.md
+vault/media/*.md
 vault/decisions/
 vault/simulations/
 vault/tasks/

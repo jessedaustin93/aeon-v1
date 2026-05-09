@@ -159,6 +159,15 @@ def _write_markdown(path: Path, frontmatter: Dict, body: str, config: Optional[C
     path.write_text("\n".join(lines) + "\n\n" + body, encoding="utf-8")
 
 
+def _notify_memory_created(config: Config, memory_type: str) -> None:
+    """Notify background maintenance without making memory writes depend on it."""
+    try:
+        from .background_consolidation import notify_memory_created
+        notify_memory_created(config, memory_type)
+    except Exception:
+        pass
+
+
 class MemoryStore:
     def __init__(self, config: Config):
         self.config = config
@@ -208,6 +217,7 @@ class MemoryStore:
             ),
             config=self.config,
         )
+        _notify_memory_created(self.config, "raw")
         return memory
 
     # --------------------------------------------------------------- episodic -
@@ -262,6 +272,7 @@ class MemoryStore:
             ),
             config=self.config,
         )
+        _notify_memory_created(self.config, "episodic")
         return memory
 
     # --------------------------------------------------------------- semantic -
@@ -314,6 +325,7 @@ class MemoryStore:
             ),
             config=self.config,
         )
+        _notify_memory_created(self.config, "semantic")
         return memory
 
     # ------------------------------------------------------------- reflection -
