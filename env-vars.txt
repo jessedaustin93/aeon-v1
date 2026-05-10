@@ -13,15 +13,10 @@ AEON_V1_LLM
   model IDs so any LM Studio model can be swapped in without machine-specific
   values.
 
-AEON_V1_LLM_PROVIDER
-  Which LLM provider to use.
-  Options: anthropic | lmstudio
-  Default: anthropic
-
 AEON_V1_LLM_MODEL
-  Model name passed to the provider.
-  Examples: google/gemma-4-e4b (LM Studio), claude-sonnet-4-6 (Anthropic)
-  Default: claude-sonnet-4-6
+  Local model name passed to LM Studio.
+  Examples: google/gemma-4-e4b, qwen/qwen3-4b-2507
+  Default: local-model
 
 AEON_V1_LLM_CHAT_MODEL
   Model name used for interactive chat responses. Use the fastest useful local instruct model.
@@ -32,7 +27,7 @@ AEON_V1_LLM_DEEP_MODEL
   Default: AEON_V1_LLM_MODEL
 
 AEON_V1_LLM_BASE_URL
-  Base URL for OpenAI-compatible local servers (used by lmstudio provider).
+  Base URL for the LM Studio OpenAI-compatible local server.
   Default: http://localhost:1234/v1
 
 AEON_V1_LLM_TIMEOUT
@@ -56,7 +51,3 @@ AEON_V1_LLM_MAX_ATTEMPTS
   Max retry attempts for lmstudio calls before giving up.
   Also caps the number of tool-call rounds in generate_with_memory().
   Default: 1
-
-ANTHROPIC_API_KEY
-  API key for the Anthropic provider. Required only when AEON_V1_LLM_PROVIDER=anthropic.
-  Default: (none)

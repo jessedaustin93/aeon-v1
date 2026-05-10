@@ -38,6 +38,7 @@ memory/raw/*.json
 memory/episodic/*.json
 memory/semantic/*.json
 memory/reflections/*.json
+memory/reflections/archive/
 memory/consolidations/*.json
 memory/media/*.json
 memory/media/uploads/
@@ -52,6 +53,17 @@ vault/semantic/*.md
 vault/reflections/*.md
 vault/consolidations/*.md
 vault/media/*.md
+vault/_generated/
+vault/topics/*.md
+vault/Aeon Memory Dashboard.md
+vault/Core Memory.md
+vault/Decisions.md
+vault/Episodic Memory.md
+vault/Raw Memory.md
+vault/Reflections.md
+vault/Semantic Memory.md
+vault/Simulations.md
+vault/Tasks.md
 vault/decisions/
 vault/simulations/
 vault/tasks/

@@ -26,7 +26,7 @@ from .llm import (
     generate_with_memory,
     parse_simulation_sections,
 )
-from .memory_store import _generate_id, _wikilink
+from .memory_store import _generate_id, _vault_note_path, _wikilink
 from .tasks import TaskStore
 from .time_utils import local_date_time_string, utc_now_iso
 from .tool_calls import ToolCallStore
@@ -54,7 +54,7 @@ class SimulationStore:
 
     def _ensure_dirs(self) -> None:
         (self.config.memory_path / "simulations").mkdir(parents=True, exist_ok=True)
-        (self.config.vault_path / "simulations").mkdir(parents=True, exist_ok=True)
+        _vault_note_path(self.config, "simulations", ".keep").parent.mkdir(parents=True, exist_ok=True)
 
     def store(self, simulation: Dict) -> Dict:
         sim_id = simulation["id"]
@@ -97,7 +97,7 @@ class SimulationStore:
         return sorted(sims, key=lambda s: s.get("created_at", ""))
 
     def _write_markdown(self, sim: Dict) -> None:
-        md_path = self.config.vault_path / "simulations" / f"{sim['id']}.md"
+        md_path = _vault_note_path(self.config, "simulations", sim["id"])
         fm_lines = ["---"]
         for key, val in [
             ("id",                      sim["id"]),

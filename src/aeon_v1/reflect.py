@@ -1,5 +1,8 @@
+import json
+import random
 from typing import Dict, List, Optional, Tuple
 
+from .aging import age_weight
 from .config import Config
 from .evaluate import EvaluationStore
 from .llm import (
@@ -18,6 +21,8 @@ _TYPE_SUBDIR: Dict[str, str] = {
     "episodic": "episodic",
     "semantic":  "semantic",
     "raw":       "raw",
+    "consolidation": "consolidations",
+    "media": "media",
 }
 
 _TASK_PHRASES = [
@@ -34,8 +39,20 @@ _UNCERTAINTY_PHRASES = [
 ]
 
 
-def reflect(config: Optional[Config] = None) -> Dict:
+def reflect(
+    config: Optional[Config] = None,
+    since_timestamp: Optional[str] = None,
+    force: bool = False,
+) -> Dict:
     """Review episodic and semantic memories and append a new reflection note.
+
+    Args:
+        config:          Optional Config. Defaults to Config().
+        since_timestamp: ISO timestamp. When set, only memories created at or
+                         after this time are considered (fresh-memory pass).
+                         The sequential cursor is NOT advanced in this mode.
+        force:           Skip the low-value and duplicate guards. Used by the
+                         runner for immediate fresh-memory passes.
 
     Safety guarantees:
     - Only episodic and semantic memories are reviewed by default.
@@ -43,9 +60,9 @@ def reflect(config: Optional[Config] = None) -> Dict:
     - At most config.max_memories_per_reflection sources per pass.
     - vault/core/ is never written to — core suggestions go in the note only.
     - Passes below config.min_reflection_sources are skipped unless
-      config.allow_low_value_reflections is True.
+      config.allow_low_value_reflections is True or force=True.
     - Passes with the same source IDs as a prior reflection are skipped
-      unless config.skip_duplicate_reflections is False.
+      unless config.skip_duplicate_reflections is False or force=True.
     """
     from .write_guard import assert_write_authorized
     assert_write_authorized("reflect")
@@ -53,27 +70,15 @@ def reflect(config: Optional[Config] = None) -> Dict:
         config = Config()
 
     store = MemoryStore(config)
-    episodic = store.list_memories("episodic")
-    semantic = store.list_memories("semantic")
+    sources = _select_reflection_sources(store, config, since_timestamp=since_timestamp)
 
-    if config.allow_reflection_on_reflections:
-        episodic = episodic + store.list_memories("reflections")
+    if not sources:
+        return {"reflection": None, "message": "No memories available to reflect on."}
 
-    if not episodic and not semantic:
-        return {"reflection": None, "message": "No episodic or semantic memories to reflect on."}
-
-    # Apply safety cap: keep the most recent N combined memories.
-    combined = episodic + semantic
-    limit = config.max_memories_per_reflection
-    if len(combined) > limit:
-        combined = sorted(combined, key=lambda m: m.get("created", ""))[-limit:]
-        episodic = [m for m in combined if m["type"] == "episodic"]
-        semantic  = [m for m in combined if m["type"] == "semantic"]
-
-    source_ids = [m["id"] for m in episodic + semantic]
+    source_ids = [m["id"] for m in sources]
 
     # Low-value guard: too few sources.
-    if len(source_ids) < config.min_reflection_sources and not config.allow_low_value_reflections:
+    if not force and len(source_ids) < config.min_reflection_sources and not config.allow_low_value_reflections:
         return {
             "reflection": None,
             "message": (
@@ -83,11 +88,17 @@ def reflect(config: Optional[Config] = None) -> Dict:
             ),
         }
 
-    # Duplicate guard: same source IDs already reflected on.
-    if config.skip_duplicate_reflections and _is_duplicate(source_ids, store):
+    # Duplicate guard: same or near-same source sets reflected within the repeat
+    # window. Weighted/random source selection can still overlap heavily, so this
+    # guard stays active for every sampling strategy.
+    _rh = getattr(config, "min_reflection_repeat_hours", 1.0)
+    repeat_hours = float(_rh if _rh is not None else 1.0)
+    _overlap = getattr(config, "min_reflection_source_overlap", 0.85)
+    overlap = float(_overlap if _overlap is not None else 0.85)
+    if not force and config.skip_duplicate_reflections and _is_duplicate(source_ids, store, repeat_hours, overlap):
         return {
             "reflection": None,
-            "message": "Duplicate reflection skipped: same source IDs already reflected on.",
+            "message": "Duplicate reflection skipped: source IDs were recently reflected on.",
         }
 
     # Build readable source links.
@@ -96,14 +107,14 @@ def reflect(config: Optional[Config] = None) -> Dict:
             _TYPE_SUBDIR.get(m["type"], m["type"]),
             m.get("title", m["id"]),
         )
-        for m in episodic + semantic
+        for m in sources
     }
 
-    all_tags = list({tag for m in episodic + semantic for tag in m.get("tags", [])})
+    all_tags = list({tag for m in sources for tag in m.get("tags", [])})
 
     past_failures = EvaluationStore(config).list_evaluations(feedback="failure")
 
-    analysis = _analyse(episodic, semantic, past_failures)
+    analysis = _analyse(sources, past_failures=past_failures)
     analysis["display_tz"] = config.display_timezone
 
     content = _generate_reflection(analysis, config)
@@ -145,22 +156,153 @@ def reflect(config: Optional[Config] = None) -> Dict:
 # Analysis helpers
 # ---------------------------------------------------------------------------
 
-def _is_duplicate(source_ids: List[str], store: MemoryStore) -> bool:
-    """Return True if any prior reflection already reviewed the exact same source IDs."""
+def _sequential_chunk(sources: List[Dict], config: Config, limit: int) -> List[Dict]:
+    """Return the next chunk of `limit` memories in creation-time order.
+
+    A cursor position is persisted to memory/runtime/reflection_cursor.json so
+    each call advances to the next slice. When the end is reached the cursor
+    wraps to 0, ensuring every memory is visited regularly.
+    """
+    sorted_sources = sorted(sources, key=lambda m: m.get("created", ""))
+    total = len(sorted_sources)
+    pos = _load_cursor(config) % total if total > 0 else 0
+
+    chunk = sorted_sources[pos:pos + limit]
+    if len(chunk) < limit and total > limit:
+        # Wrap around: fill the remainder from the beginning of the archive.
+        overflow = limit - len(chunk)
+        chunk = chunk + sorted_sources[:overflow]
+        new_pos = overflow
+    else:
+        new_pos = (pos + limit) % total if total > 0 else 0
+
+    _save_cursor(config, new_pos)
+    return chunk
+
+
+def _load_cursor(config: Config) -> int:
+    path = config.memory_path / "runtime" / "reflection_cursor.json"
+    if not path.exists():
+        return 0
+    try:
+        return int(json.loads(path.read_text(encoding="utf-8")).get("position", 0) or 0)
+    except Exception:
+        return 0
+
+
+def _save_cursor(config: Config, position: int) -> None:
+    path = config.memory_path / "runtime" / "reflection_cursor.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"position": position, "updated_at": utc_now_iso()}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _is_duplicate(
+    source_ids: List[str],
+    store: MemoryStore,
+    repeat_hours: float = 1.0,
+    min_overlap: float = 1.0,
+) -> bool:
+    """Return True if a recent reflection reviewed the same or near-same sources.
+
+    Only reflections created within the last `repeat_hours` are considered.
+    This prevents back-to-back identical output while allowing re-reflection
+    after the window expires — critical for small stores where the same source
+    IDs are always selected.
+    """
+    from datetime import datetime, timedelta, timezone
     source_set = set(source_ids)
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(hours=repeat_hours)
+    ).strftime("%Y-%m-%dT%H:%M:%S")
     for r in store.list_memories("reflections"):
-        if set(r.get("source_ids", [])) == source_set:
+        if r.get("created", "") < cutoff:
+            continue
+        previous = set(r.get("source_ids", []))
+        if previous == source_set:
+            return True
+        union = previous | source_set
+        if union and len(previous & source_set) / len(union) >= min_overlap:
             return True
     return False
 
 
+def _select_reflection_sources(
+    store: MemoryStore,
+    config: Config,
+    since_timestamp: Optional[str] = None,
+) -> List[Dict]:
+    """Return the next chunk of sources for a reflection pass.
+
+    When since_timestamp is set, returns only memories created at or after
+    that time (fresh-memory pass). The sequential cursor is not advanced.
+    Otherwise, uses config.reflection_sampling_strategy:
+      - "sequential": advances a persistent cursor through the sorted archive.
+      - "recent":     returns the most recently created memories.
+      - "archive_random" (default): random sample across the full archive.
+    """
+    memory_types = list(getattr(config, "reflection_source_memory_types", []) or ["episodic", "semantic"])
+    if config.allow_reflection_on_reflections and "reflections" not in memory_types:
+        memory_types.append("reflections")
+
+    sources: List[Dict] = []
+    for memory_type in memory_types:
+        normalized_type = {
+            "reflections": "reflection",
+            "consolidations": "consolidation",
+        }.get(memory_type, memory_type)
+        for memory in store.list_memories(memory_type):
+            if not memory.get("type"):
+                memory = {**memory, "type": normalized_type}
+            sources.append(memory)
+    sources = [m for m in sources if m.get("id")]
+    if not sources:
+        return []
+
+    # Fresh-memory pass: only memories newer than the given timestamp.
+    if since_timestamp:
+        fresh = [m for m in sources if m.get("created", "") >= since_timestamp]
+        limit = int(getattr(config, "max_memories_per_reflection", 20) or 20)
+        return fresh[:limit]
+
+    limit = int(getattr(config, "max_memories_per_reflection", 20) or 20)
+
+    strategy = str(getattr(config, "reflection_sampling_strategy", "sequential"))
+
+    if strategy == "sequential":
+        return _sequential_chunk(sources, config, limit)
+
+    if strategy == "recent":
+        return sorted(sources, key=lambda m: m.get("created", ""))[-limit:]
+
+    # archive_random fallback — age-weighted: recent memories are more likely
+    # to be drawn, but old memories can still be selected (they never vanish).
+    if len(sources) <= limit:
+        return sources
+    srng = random.SystemRandom()
+    scored = [
+        (srng.random() * age_weight(m.get("created", ""), config, importance=float(m.get("importance", 0) or 0)), m)
+        for m in sources
+    ]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    sampled = [m for _, m in scored[:limit]]
+    return sorted(sampled, key=lambda m: m.get("created", ""))
+
+
 def _analyse(
-    episodic: List[Dict],
-    semantic: List[Dict],
+    sources: List[Dict],
+    semantic: Optional[List[Dict]] = None,
     past_failures: Optional[List[Dict]] = None,
 ) -> Dict:
-    """Build a structured analysis dict from episodic and semantic memories."""
-    sources = episodic + semantic
+    """Build a structured analysis dict from sampled archive memories."""
+    if semantic is not None:
+        sources = sources + semantic
+    source_types: Dict[str, int] = {}
+    for memory in sources:
+        mem_type = memory.get("type", "unknown")
+        source_types[mem_type] = source_types.get(mem_type, 0) + 1
 
     tag_counts: Dict[str, int] = {}
     for m in sources:
@@ -171,7 +313,7 @@ def _analyse(
     detected_patterns = _detect_patterns(sources, tag_counts)
     uncertainty_notes = _detect_uncertainty(sources)
     suggested_tasks = _extract_tasks(sources)
-    suggested_core_updates = _extract_core_suggestions(episodic, semantic)
+    suggested_core_updates = _extract_core_suggestions(sources)
     confidence = _compute_confidence(sources, tag_counts, len(uncertainty_notes))
 
     failures = past_failures or []
@@ -188,7 +330,7 @@ def _analyse(
     return {
         "sources":               sources,
         "source_ids":            [m["id"] for m in sources],
-        "source_types":          {"episodic": len(episodic), "semantic": len(semantic)},
+        "source_types":          source_types,
         "all_tags":              list(tag_counts.keys()),
         "tag_counts":            tag_counts,
         "high_importance":       high_importance,
@@ -239,8 +381,10 @@ def _extract_tasks(sources: List[Dict]) -> List[str]:
     return tasks
 
 
-def _extract_core_suggestions(episodic: List[Dict], semantic: List[Dict]) -> List[str]:
+def _extract_core_suggestions(sources: List[Dict]) -> List[str]:
     suggestions = []
+    semantic = [m for m in sources if m.get("type") == "semantic"]
+    episodic = [m for m in sources if m.get("type") == "episodic"]
     for m in semantic[:3]:
         concept = m.get("concept", "")
         if concept:
@@ -276,9 +420,11 @@ def _generate_reflection(analysis: Dict, config: Optional[Config] = None) -> str
     core update warning, quality score) are always rule-based for safety.
     Falls back to fully rule-based when LLM is disabled or unavailable.
     """
-    ep_count = analysis["source_types"].get("episodic", 0)
-    sem_count = analysis["source_types"].get("semantic", 0)
     display_tz = analysis.get("display_tz", "America/New_York")
+    total_count = sum(analysis["source_types"].values())
+    type_summary = ", ".join(
+        f"{count} {mem_type}" for mem_type, count in sorted(analysis["source_types"].items())
+    )
 
     # --- LLM attempt for narrative sections ---
     llm_sections: Dict[str, str] = {}
@@ -305,7 +451,7 @@ def _generate_reflection(analysis: Dict, config: Optional[Config] = None) -> str
     lines = [
         f"## Recursive Reflection — {local_now_string(display_tz)}",
         "",
-        f"Reviewing {ep_count} episodic and {sem_count} semantic memories.",
+        f"Reviewing {total_count} archive memories ({type_summary}).",
         "",
     ]
 

@@ -71,7 +71,7 @@ This directory contains Aeon-V1's core implementation. The modules are grouped b
 
 | Module | Purpose |
 |---|---|
-| `llm.py` | Optional Anthropic or LM Studio adapter. Handles chat messages, tool calling, model role routing, and vision calls. |
+| `llm.py` | Optional local LM Studio adapter. Handles chat messages, tool calling, model role routing, and vision calls. |
 
 Aeon must still run when LLM calls fail. LLM helpers return `None` on provider errors so callers can fall back to local behavior.
 

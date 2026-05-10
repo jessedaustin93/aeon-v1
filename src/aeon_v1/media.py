@@ -12,7 +12,7 @@ from typing import Dict, Optional
 
 from .config import Config
 from .llm import generate_image_description, resolve_lmstudio_vision_model
-from .memory_store import _extract_tags, _generate_id, _make_title, _write_markdown
+from .memory_store import _extract_tags, _generate_id, _make_title, _vault_note_path, _write_markdown
 from .time_utils import utc_now_iso
 
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -136,7 +136,7 @@ def _store_image_memory(
         encoding="utf-8",
     )
     _write_markdown(
-        config.vault_path / "media" / f"{media_id}.md",
+        _vault_note_path(config, "media", media_id),
         frontmatter={
             "id": media_id,
             "title": title,

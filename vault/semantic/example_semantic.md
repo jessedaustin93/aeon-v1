@@ -9,8 +9,8 @@ tags:
   - pattern
   - learning
 links:
-  - "[[episodic/example_episodic]]"
-  - "[[raw/example_raw]]"
+  - "[[_generated/episodic/example_episodic]]"
+  - "[[_generated/raw/example_raw]]"
 ---
 
 # Semantic Memory: Memory Layering
@@ -27,22 +27,13 @@ links:
 
 
 ## Related Memories
-- [[raw/0cd37d19|aeon-ah-jesse-this-is-the]]
-- [[raw/0f64106a|aeon-ah-i-see-no-names]]
-- [[raw/1f17099c|aeon-ah-jesse-this-is-exactly]]
-- [[raw/22d39566|aeon-got-it-jesse-here-s]]
-- [[raw/47dc71c3|aeon-ah-jesse-no-apology-needed]]
-- [[raw/6233e852|aeon-understood-here-s-how-we]]
-- [[raw/83388a73|aeon-if-crypto-trading-were-part]]
-- [[raw/8bab148b|i-learned-that-aeon-v1-stores]]
-- [[raw/9b634318|aeon-ah-jesse-exactly-you-told]]
-- [[raw/b176068c|aeon-got-it-here-s-the]]
-- [[raw/bb1fdb66|aeon-ah-jesse-it-s-great]]
-- [[raw/example_raw]]
-- [[episodic/7dc100ce|aeon-ah-jesse-exactly-you-told]]
-- [[episodic/b53cc0f4|aeon-if-crypto-trading-were-part]]
-- [[episodic/c220deae|i-learned-that-aeon-v1-stores]]
-- [[episodic/example_episodic]]
-- [[reflections/4c6bf202|reflection-20260428-2107]]
-- [[reflections/example_reflection]]
-- [[reflections/f0482b28|reflection-20260428-1738]]
+**Topic:** [[topics/learning|Topic: Learning]]
+
+- [[_generated/reflections/b814cf47|reflection-20260502-0255]]
+- [[_generated/reflections/b27491c2|reflection-20260502-0232]]
+- [[_generated/reflections/5cb34c0a|reflection-20260502-0208]]
+- [[_generated/reflections/798c6ac1|reflection-20260502-0208]]
+- [[_generated/reflections/fee41ce6|reflection-20260502-0207]]
+- [[_generated/reflections/f0482b28|reflection-20260428-1738]]
+- [[_generated/reflections/4c6bf202|reflection-20260428-2107]]
+- [[_generated/reflections/example_reflection]]

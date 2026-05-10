@@ -83,7 +83,7 @@ Each cycle through the loop increases the depth and quality of stored knowledge 
 | `llm_model` | str or null | Model name used, or null |
 | `llm_provider` | str or null | Provider name, or null |
 
-**LLM integration (Layer 4):** When `config.llm_enabled` is True and `ANTHROPIC_API_KEY` is set, `_generate_reflection` calls `generate_text()` from `llm.py` to enhance sections 1, 3, 4, and 5 with LLM-synthesized narrative. Sections 2, 6, and 7 are always rule-based for safety (no LLM invention of source memories, no bypassing of the core memory warning). The system falls back silently to fully rule-based if LLM is unavailable.
+**LLM integration (Layer 4):** When `config.llm_enabled` is True and LM Studio is reachable, `_generate_reflection` calls `generate_text()` from `llm.py` to enhance sections 1, 3, 4, and 5 with LLM-synthesized narrative. Sections 2, 6, and 7 are always rule-based for safety (no LLM invention of source memories, no bypassing of the core memory warning). The system falls back silently to fully rule-based if the local model is unavailable.
 
 ---
 

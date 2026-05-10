@@ -23,7 +23,7 @@ import re
 from typing import Dict, List, Optional
 
 from .config import Config
-from .memory_store import MemoryStore, _generate_id, _wikilink
+from .memory_store import MemoryStore, _generate_id, _vault_note_path, _wikilink
 from .simulate import SimulationStore
 from .tasks import TaskStore
 from .time_utils import local_date_time_string, utc_now_iso
@@ -78,7 +78,7 @@ class EvaluationStore:
 
     def _ensure_dirs(self) -> None:
         (self.config.memory_path / "evaluations").mkdir(parents=True, exist_ok=True)
-        (self.config.vault_path  / "evaluations").mkdir(parents=True, exist_ok=True)
+        _vault_note_path(self.config, "evaluations", ".keep").parent.mkdir(parents=True, exist_ok=True)
 
     def store(self, evaluation: Dict) -> Dict:
         eval_id = evaluation["id"]
@@ -119,7 +119,7 @@ class EvaluationStore:
         return sorted(records, key=lambda r: r.get("created_at", ""))
 
     def _write_markdown(self, ev: Dict) -> None:
-        md_path = self.config.vault_path / "evaluations" / f"{ev['id']}.md"
+        md_path = _vault_note_path(self.config, "evaluations", ev["id"])
         fm_lines = [
             "---",
             f"id: {ev['id']}",

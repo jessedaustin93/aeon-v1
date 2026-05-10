@@ -22,6 +22,7 @@ import pytest
 
 from aeon_v1 import Config, EvaluationStore, evaluate_simulation, register_builtin_tools
 from aeon_v1.evaluate import _jaccard_score, _verdict, _divergences
+from aeon_v1.memory_store import _vault_note_path
 from aeon_v1.simulate import simulate_action
 from aeon_v1.tasks import TaskStore
 from aeon_v1.tools import ToolRegistry
@@ -292,7 +293,7 @@ def test_evaluation_json_written(cfg):
 def test_evaluation_markdown_written(cfg):
     sim = _make_simulation(cfg)
     ev  = evaluate_simulation(sim, "Result.", config=cfg)["evaluation"]
-    assert (cfg.vault_path / "evaluations" / f"{ev['id']}.md").exists()
+    assert _vault_note_path(cfg, "evaluations", ev["id"]).exists()
 
 
 def test_evaluation_json_round_trip(cfg):
@@ -353,14 +354,14 @@ def test_evaluation_store_filter_by_simulation_id(cfg):
 def test_markdown_has_expected_outcome_section(cfg):
     sim = _make_simulation(cfg)
     ev  = evaluate_simulation(sim, "Some result.", config=cfg)["evaluation"]
-    md  = (cfg.vault_path / "evaluations" / f"{ev['id']}.md").read_text(encoding="utf-8")
+    md  = _vault_note_path(cfg, "evaluations", ev["id"]).read_text(encoding="utf-8")
     assert "## Expected Outcome" in md
 
 
 def test_markdown_has_actual_result_section(cfg):
     sim = _make_simulation(cfg)
     ev  = evaluate_simulation(sim, "Some result.", config=cfg)["evaluation"]
-    md  = (cfg.vault_path / "evaluations" / f"{ev['id']}.md").read_text(encoding="utf-8")
+    md  = _vault_note_path(cfg, "evaluations", ev["id"]).read_text(encoding="utf-8")
     assert "## Actual Result" in md
     assert "Some result." in md
 
@@ -368,14 +369,14 @@ def test_markdown_has_actual_result_section(cfg):
 def test_markdown_has_divergences_section(cfg):
     sim = _make_simulation(cfg)
     ev  = evaluate_simulation(sim, "Some result.", config=cfg)["evaluation"]
-    md  = (cfg.vault_path / "evaluations" / f"{ev['id']}.md").read_text(encoding="utf-8")
+    md  = _vault_note_path(cfg, "evaluations", ev["id"]).read_text(encoding="utf-8")
     assert "## Divergences" in md
 
 
 def test_markdown_has_episodic_memory_section(cfg):
     sim = _make_simulation(cfg)
     ev  = evaluate_simulation(sim, "Some result.", config=cfg)["evaluation"]
-    md  = (cfg.vault_path / "evaluations" / f"{ev['id']}.md").read_text(encoding="utf-8")
+    md  = _vault_note_path(cfg, "evaluations", ev["id"]).read_text(encoding="utf-8")
     assert "## Episodic Memory" in md
     assert ev["episodic_memory_id"] in md
 
@@ -383,7 +384,7 @@ def test_markdown_has_episodic_memory_section(cfg):
 def test_markdown_frontmatter_has_required_fields(cfg):
     sim = _make_simulation(cfg)
     ev  = evaluate_simulation(sim, "Some result.", config=cfg)["evaluation"]
-    md  = (cfg.vault_path / "evaluations" / f"{ev['id']}.md").read_text(encoding="utf-8")
+    md  = _vault_note_path(cfg, "evaluations", ev["id"]).read_text(encoding="utf-8")
     assert "type: evaluation"  in md
     assert "simulation_id:"    in md
     assert "verdict:"          in md

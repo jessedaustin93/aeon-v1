@@ -17,6 +17,7 @@ import json
 import pytest
 
 from aeon_v1 import Config, evaluate_simulation
+from aeon_v1.memory_store import _vault_note_path
 from aeon_v1.simulate import simulate_action
 from aeon_v1.tasks import TaskStore
 
@@ -70,7 +71,7 @@ def test_update_confidence_persists_to_json(cfg):
 def test_update_confidence_updates_markdown(cfg):
     task, _ = _make_simulation(cfg)
     TaskStore(cfg).update_confidence(task["id"], 0.9)
-    md = (cfg.vault_path / "tasks" / f"{task['id']}.md").read_text(encoding="utf-8")
+    md = _vault_note_path(cfg, "tasks", task["id"]).read_text(encoding="utf-8")
     assert "0.9" in md
 
 

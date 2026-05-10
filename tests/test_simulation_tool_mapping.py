@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from aeon_v1 import Config, register_builtin_tools, FILE_READ, FILE_WRITE, COMMAND_PREVIEW
+from aeon_v1.memory_store import _vault_note_path
 from aeon_v1.simulate import (
     SimulationStore,
     _extract_command,
@@ -304,7 +305,7 @@ def test_tool_call_section_in_markdown(cfg_with_tools):
     task = _make_task(cfg_with_tools, "Read the memory index file.")
     result = simulate_action(task, config=cfg_with_tools)
     sim = result["simulation"]
-    md_path = cfg_with_tools.vault_path / "simulations" / f"{sim['id']}.md"
+    md_path = _vault_note_path(cfg_with_tools, "simulations", sim["id"])
     md = md_path.read_text(encoding="utf-8")
     assert "**Tool Call:**" in md
 
@@ -313,7 +314,7 @@ def test_tool_call_markdown_shows_no_match_message(cfg_with_tools):
     task = _make_task(cfg_with_tools, "Document the taxonomy structure thoroughly.")
     result = simulate_action(task, config=cfg_with_tools)
     sim = result["simulation"]
-    md_path = cfg_with_tools.vault_path / "simulations" / f"{sim['id']}.md"
+    md_path = _vault_note_path(cfg_with_tools, "simulations", sim["id"])
     md = md_path.read_text(encoding="utf-8")
     assert "No matching tool" in md
 
@@ -322,7 +323,7 @@ def test_tool_call_markdown_shows_json_block_on_match(cfg_with_tools):
     task = _make_task(cfg_with_tools, "Read the config.json file.")
     result = simulate_action(task, config=cfg_with_tools)
     sim = result["simulation"]
-    md_path = cfg_with_tools.vault_path / "simulations" / f"{sim['id']}.md"
+    md_path = _vault_note_path(cfg_with_tools, "simulations", sim["id"])
     md = md_path.read_text(encoding="utf-8")
     assert "```json" in md
     assert "file_read" in md

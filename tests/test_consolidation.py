@@ -3,6 +3,7 @@ import json
 import time
 
 from aeon_v1 import AgentNode, Config, DataWriteAgent, MemoryStore, Orchestrator, consolidate_memories
+from aeon_v1.memory_store import _vault_note_path
 
 
 def test_consolidation_creates_append_only_consensus(tmp_path):
@@ -33,7 +34,7 @@ def test_consolidation_creates_append_only_consensus(tmp_path):
     assert "consensus" in record["content"].lower()
 
     con_path = cfg.memory_path / "consolidations" / f"{record['id']}.json"
-    vault_path = cfg.vault_path / "consolidations" / f"{record['id']}.md"
+    vault_path = _vault_note_path(cfg, "consolidations", record["id"])
     assert con_path.exists()
     assert vault_path.exists()
     assert "Source memories were not deleted" in vault_path.read_text(encoding="utf-8")
@@ -199,3 +200,58 @@ def test_background_consolidation_runs_after_five_new_memories(tmp_path):
     assert records, "Fifth new source memory should trigger background consolidation"
     state = json.loads((cfg.memory_path / "consolidations" / "trigger_state.json").read_text())
     assert state["last_checked_total"] == 5
+
+
+def test_runner_runs_archive_reflection_periodically(tmp_path):
+    from aeon_v1.runner import run_forever
+    from aeon_v1.runtime import read_json, runner_status_path, runner_stop_path
+    import threading
+
+    cfg = Config(tmp_path)
+    cfg.enable_background_consolidation = False
+    cfg.archive_reflection_every_passes = 2
+    cfg.allow_low_value_reflections = True
+    cfg.min_reflection_sources = 1
+    cfg.skip_duplicate_reflections = False
+    MemoryStore(cfg).store_raw("Plain archive memory for periodic reflection.", source="test")
+
+    thread = threading.Thread(
+        target=run_forever,
+        kwargs={"config": cfg, "poll_seconds": 0.05, "link_every_passes": 0},
+        daemon=True,
+    )
+    thread.start()
+
+    deadline = time.time() + 3
+    status = {}
+    while time.time() < deadline:
+        status = read_json(runner_status_path(cfg))
+        if status.get("last_reflection_at"):
+            break
+        time.sleep(0.05)
+
+    runner_stop_path(cfg).write_text("stop", encoding="utf-8")
+    thread.join(timeout=3)
+
+    assert status.get("last_reflection_at")
+    assert list((cfg.memory_path / "reflections").glob("*.json"))
+
+
+def test_runner_debounces_single_fresh_memory_reflection(tmp_path):
+    from aeon_v1.runner import _fresh_reflection_due
+
+    cfg = Config(tmp_path)
+    cfg.fresh_reflection_min_new_memories = 3
+    cfg.fresh_reflection_min_seconds = 60
+
+    assert _fresh_reflection_due(cfg, current_count=2, last_count=1, last_at=time.monotonic()) is False
+
+
+def test_runner_allows_fresh_reflection_after_batch_threshold(tmp_path):
+    from aeon_v1.runner import _fresh_reflection_due
+
+    cfg = Config(tmp_path)
+    cfg.fresh_reflection_min_new_memories = 3
+    cfg.fresh_reflection_min_seconds = 60
+
+    assert _fresh_reflection_due(cfg, current_count=4, last_count=1, last_at=time.monotonic()) is True

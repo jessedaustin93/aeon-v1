@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 
 from aeon_v1 import AgentNode, AGENT_ROLES, Config, Orchestrator, ingest
+from aeon_v1.memory_store import _vault_note_path
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +107,7 @@ def test_agent_persists_json(cfg):
 
 def test_agent_persists_markdown(cfg):
     node = AgentNode(role="thinker", config=cfg)
-    md_path = cfg.vault_path / "agents" / f"{node.id}.md"
+    md_path = _vault_note_path(cfg, "agents", node.id)
     assert md_path.exists()
     text = md_path.read_text()
     assert "thinker" in text

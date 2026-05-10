@@ -5,10 +5,11 @@ consensus record. It never deletes, rewrites, or merges source memories.
 """
 import json
 import re
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 from .config import Config
-from .memory_store import MemoryStore, _generate_id, _make_title, _wikilink
+from .embeddings import cosine_similarity, get_embedding
+from .memory_store import MemoryStore, _generate_id, _make_title, _vault_note_path, _wikilink
 from .time_utils import utc_now_iso
 
 _DEFAULT_TYPES = ["episodic", "semantic"]
@@ -33,10 +34,7 @@ def consolidate_memories(
     memory_types = memory_types or _DEFAULT_TYPES
 
     memories = _load_memories(cfg, memory_types)
-    groups = _find_duplicate_groups(
-        memories,
-        threshold=cfg.consolidation_similarity_threshold,
-    )
+    groups = _find_duplicate_groups(memories, cfg)
     existing = _existing_source_sets(cfg)
 
     created: List[Dict] = []
@@ -71,13 +69,24 @@ def _load_memories(config: Config, memory_types: List[str]) -> List[Dict]:
     return memories
 
 
-def _find_duplicate_groups(memories: List[Dict], threshold: float) -> List[List[Dict]]:
+def _find_duplicate_groups(memories: List[Dict], config: Config) -> List[List[Dict]]:
     if len(memories) < 2:
         return []
 
     parent = {m["id"]: m["id"] for m in memories}
     by_id = {m["id"]: m for m in memories}
     word_sets = {m["id"]: _word_set(_memory_text(m)) for m in memories}
+
+    # Fetch embeddings for all memories upfront so each text is embedded once.
+    embeddings: Dict[str, List[float]] = {}
+    if getattr(config, "embedding_enabled", True):
+        for m in memories:
+            vec = get_embedding(_memory_text(m), config)
+            if vec is not None:
+                embeddings[m["id"]] = vec
+
+    emb_threshold = float(getattr(config, "embedding_similarity_threshold", 0.85) or 0.85)
+    jac_threshold = float(config.consolidation_similarity_threshold)
 
     def find(mid: str) -> str:
         while parent[mid] != mid:
@@ -92,7 +101,7 @@ def _find_duplicate_groups(memories: List[Dict], threshold: float) -> List[List[
 
     for i, left in enumerate(memories):
         for right in memories[i + 1:]:
-            score = _similarity_score(left, right, word_sets)
+            score, threshold = _similarity_score(left, right, word_sets, embeddings, emb_threshold, jac_threshold)
             if score >= threshold:
                 union(left["id"], right["id"])
 
@@ -157,7 +166,7 @@ def _store_consolidation(group: List[Dict], config: Config) -> Dict:
     frontmatter.append("links:")
     frontmatter.extend(f"  - {link}" for link in links)
     frontmatter.append("---")
-    (config.vault_path / "consolidations" / f"{con_id}.md").write_text(
+    _vault_note_path(config, "consolidations", con_id).write_text(
         "\n".join(frontmatter) + "\n\n" + body,
         encoding="utf-8",
     )
@@ -203,12 +212,30 @@ def _jaccard(left: Set[str], right: Set[str]) -> float:
     return len(left & right) / len(left | right)
 
 
-def _similarity_score(left: Dict, right: Dict, word_sets: Dict[str, Set[str]]) -> float:
+def _similarity_score(
+    left: Dict,
+    right: Dict,
+    word_sets: Dict[str, Set[str]],
+    embeddings: Dict[str, List[float]],
+    emb_threshold: float,
+    jac_threshold: float,
+) -> Tuple[float, float]:
+    """Return (score, threshold) for the best available similarity method.
+
+    Prefers embedding cosine similarity when both vectors are available.
+    Falls back to Jaccard + tag bonus when embeddings are missing.
+    The returned threshold matches the method used so the caller compares apples to apples.
+    """
+    left_emb = embeddings.get(left["id"])
+    right_emb = embeddings.get(right["id"])
+    if left_emb is not None and right_emb is not None:
+        return cosine_similarity(left_emb, right_emb), emb_threshold
+
+    # Jaccard fallback
     score = _jaccard(word_sets[left["id"]], word_sets[right["id"]])
-    shared_tags = set(left.get("tags", [])) & set(right.get("tags", []))
-    if shared_tags:
+    if set(left.get("tags", [])) & set(right.get("tags", [])):
         score += 0.15
-    return min(score, 1.0)
+    return min(score, 1.0), jac_threshold
 
 
 def _consensus_text(group: List[Dict]) -> str:

@@ -26,7 +26,7 @@ Aeon-V1 currently supports:
 - Natural-language memory search for questions like "what do you remember about X?"
 - Read-only self-inspection for questions like "what can you do?" and "how do you work?"
 - Image upload and image memory through an optional LM Studio vision model.
-- Optional LM Studio model routing for chat, general reasoning, deep reasoning, vision, and embeddings.
+- Optional local LM Studio model routing for chat, general reasoning, deep reasoning, vision, and embeddings.
 - Obsidian vault output with Markdown notes and wikilinks.
 - An always-on local runner for background linking and memory-growth consolidation.
 - Append-only duplicate consolidation that writes summaries without erasing source records.
@@ -35,7 +35,7 @@ Aeon-V1 currently supports:
 - Optional ESP32-S3 hardware approval support.
 - A pytest suite covering the system behavior.
 
-Planned or future work includes vector embeddings, richer audio/video ingestion, stronger service supervision, more local provider options, and packaged deployment.
+Planned or future work includes richer audio/video ingestion, stronger service supervision, and packaged deployment.
 
 ## How The Main Pieces Fit
 
@@ -47,7 +47,7 @@ chat_cli.py / dashboard.py
         |
         +--> SelfInspectionAgent reads repo docs/source map for "what are you?" questions
         +--> SearchAgent reads stored memories for "what do you remember?" questions
-        +--> LLM adapter uses LM Studio or Anthropic when enabled
+        +--> LLM adapter uses LM Studio when enabled
         |
         v
 MemoryStore writes JSON in memory/

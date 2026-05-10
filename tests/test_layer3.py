@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from aeon_v1 import Config, ingest, reflect
 from aeon_v1.decision import DecisionStore, select_next_task
+from aeon_v1.memory_store import _vault_note_path
 from aeon_v1.simulate import SimulationStore, simulate_action
 from aeon_v1.tasks import TaskStore, create_tasks_from_reflection
 
@@ -227,7 +228,7 @@ def test_decision_record_created(cfg_with_reflection):
     assert decision is not None
 
     dec_json = cfg_with_reflection.memory_path / "decisions" / f"{decision['id']}.json"
-    dec_md   = cfg_with_reflection.vault_path  / "decisions" / f"{decision['id']}.md"
+    dec_md = _vault_note_path(cfg_with_reflection, "decisions", decision["id"])
     assert dec_json.exists(), "Decision JSON must exist"
     assert dec_md.exists(),   "Decision Markdown must exist"
 
@@ -282,7 +283,7 @@ def test_simulation_creates_json_and_markdown(cfg_with_reflection):
     sim = result["simulation"]
 
     sim_json = cfg_with_reflection.memory_path / "simulations" / f"{sim['id']}.json"
-    sim_md   = cfg_with_reflection.vault_path  / "simulations" / f"{sim['id']}.md"
+    sim_md = _vault_note_path(cfg_with_reflection, "simulations", sim["id"])
     assert sim_json.exists(), "Simulation JSON must exist"
     assert sim_md.exists(),   "Simulation Markdown must exist"
 

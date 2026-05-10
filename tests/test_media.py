@@ -4,6 +4,7 @@ import json
 from unittest.mock import patch
 
 from aeon_v1 import Config, ingest_image_bytes, ingest_image_data_url, search
+from aeon_v1.memory_store import _vault_note_path
 
 _PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
@@ -25,7 +26,7 @@ def test_image_ingestion_stores_file_json_and_vault_note(tmp_path):
     assert record["analysis_status"] == "complete"
     assert record["analysis_model"] == "vendor/vision-model"
     assert (cfg.memory_path / "media" / f"{record['id']}.json").exists()
-    assert (cfg.vault_path / "media" / f"{record['id']}.md").exists()
+    assert _vault_note_path(cfg, "media", record["id"]).exists()
     assert (cfg.base_path / record["source_path"]).exists()
 
     data = json.loads((cfg.memory_path / "media" / f"{record['id']}.json").read_text())

@@ -2,6 +2,7 @@ import re
 from typing import Dict, Optional
 
 from .config import Config
+from .llm import score_importance
 from .memory_store import MemoryStore, _extract_tags, _score_importance
 
 # Semantic extraction: episodic -> semantic
@@ -29,8 +30,15 @@ def ingest(text: str, source: str = "manual", config: Optional[Config] = None) -
     raw = store.store_raw(text, source=source)
     result: Dict = {"raw": raw, "episodic": None, "semantic": None}
 
+    # Rule-based score from raw memory; LLM refinement applied below if enabled.
     importance = raw["importance"]
     tags = raw["tags"]
+
+    # LLM importance scoring — runs on the background/search model (Mistral when
+    # using LM Studio) so it doesn't block the chat response path.
+    llm_score = score_importance(text, config)
+    if llm_score is not None:
+        importance = llm_score
 
     if importance >= config.importance_threshold:
         summary = _make_summary(text)

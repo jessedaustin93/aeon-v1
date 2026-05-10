@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 
 from .config import Config
 from .exceptions import CoreMemoryProtectedError
-from .memory_store import _wikilink
+from .memory_store import _classify_memory, _ensure_topic_note, _topic_link, _vault_note_path, _wikilink
 
 _VAULT_DIR_MAP: Dict[str, str] = {
     "raw":        "raw",
@@ -18,8 +18,8 @@ _VAULT_DIR_MAP: Dict[str, str] = {
 }
 
 
-def link_memories(config: Optional[Config] = None) -> Dict[str, List[str]]:
-    """Add Obsidian wikilinks between notes that share at least one tag.
+def link_memories(config: Optional[Config] = None, max_related: int = 8) -> Dict[str, List[str]]:
+    """Add high-signal Obsidian wikilinks between related notes.
 
     Returns a map of memory_id -> [related_id, ...] for inspection.
     Links use [[subdir/id|Readable Title]] format when titles are available.
@@ -32,15 +32,10 @@ def link_memories(config: Optional[Config] = None) -> Dict[str, List[str]]:
 
     for mem in all_memories:
         mem_id = mem.get("id")
-        mem_tags = set(mem.get("tags", []))
-        if not mem_id or not mem_tags:
+        if not mem_id:
             continue
 
-        related = [
-            other
-            for other in all_memories
-            if other.get("id") != mem_id and mem_tags & set(other.get("tags", []))
-        ]
+        related = _rank_related(mem, all_memories, max_related=max_related)
 
         if related:
             link_map[mem_id] = [r["id"] for r in related]
@@ -63,6 +58,49 @@ def _load_all_memories(config: Config) -> List[Dict]:
     return memories
 
 
+def _rank_related(memory: Dict, all_memories: List[Dict], max_related: int) -> List[Dict]:
+    """Pick a small, useful neighbor set instead of making an all-to-all blob."""
+    scored = []
+    mem_id = memory.get("id")
+    mem_tags = set(memory.get("tags", []))
+    mem_category = _memory_category(memory)
+    mem_type = memory.get("type", "")
+    raw_ref = memory.get("raw_ref")
+    source_ids = set(memory.get("source_ids", []))
+
+    for other in all_memories:
+        if other.get("id") == mem_id:
+            continue
+        score = 0.0
+        other_id = other.get("id")
+        other_tags = set(other.get("tags", []))
+        shared_tags = mem_tags & other_tags
+        if mem_category != "general" and mem_category == _memory_category(other):
+            score += 4.0
+        if shared_tags:
+            score += min(3.0, len(shared_tags) * 1.0)
+        if raw_ref and other_id == raw_ref:
+            score += 6.0
+        if other.get("raw_ref") == mem_id:
+            score += 5.0
+        if other_id in source_ids or mem_id in set(other.get("source_ids", [])):
+            score += 4.0
+        if mem_type and mem_type == other.get("type"):
+            score -= 0.25
+        if score >= 2.0:
+            scored.append((score, other))
+
+    scored.sort(
+        key=lambda item: (
+            item[0],
+            float(item[1].get("importance", 0) or 0),
+            str(item[1].get("created", "")),
+        ),
+        reverse=True,
+    )
+    return [other for _, other in scored[:max_related]]
+
+
 def _update_markdown_links(memory: Dict, related_memories: List[Dict], config: Config) -> None:
     """Append or replace the ## Related Memories section in a vault note.
 
@@ -73,7 +111,7 @@ def _update_markdown_links(memory: Dict, related_memories: List[Dict], config: C
     core memory is human-gated and must not be modified by automated link passes.
     """
     vault_dir_name = _VAULT_DIR_MAP.get(memory.get("type", "raw"), "raw")
-    md_path = config.vault_path / vault_dir_name / f"{memory['id']}.md"
+    md_path = _vault_note_path(config, vault_dir_name, memory["id"])
 
     # Core memory protection: skip any file that lives inside vault/core/
     if not config.allow_core_modification:
@@ -87,7 +125,14 @@ def _update_markdown_links(memory: Dict, related_memories: List[Dict], config: C
     if not md_path.exists():
         return
 
+    category = _memory_category(memory)
+    if category and category != "general":
+        _ensure_topic_note(config, category)
+
     link_lines = []
+    if category and category != "general":
+        link_lines.append(f"**Topic:** {_topic_link(category)}")
+        link_lines.append("")
     for r in related_memories:
         rid   = r["id"]
         rtype = r.get("type", "raw")
@@ -109,3 +154,23 @@ def _update_markdown_links(memory: Dict, related_memories: List[Dict], config: C
         content += link_section
 
     md_path.write_text(content, encoding="utf-8")
+
+
+def _memory_text(memory: Dict) -> str:
+    parts = []
+    for field in ("text", "summary", "concept", "description", "content", "title"):
+        value = memory.get(field)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return "\n".join(parts)
+
+
+def _memory_category(memory: Dict) -> str:
+    existing = str(memory.get("category", "")).strip()
+    if existing:
+        return existing
+    return _classify_memory(
+        _memory_text(memory),
+        tags=memory.get("tags", []),
+        source=str(memory.get("source", "")),
+    )

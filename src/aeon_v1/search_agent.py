@@ -140,11 +140,12 @@ class SearchAgent:
             return None
         expanded_topic = self._expand_topic(topic)
         results = self.results(expanded_topic)
-        reply = (
-            self._format_numeric_reply(results, topic)
-            if self._is_numeric_recall_query(expanded_topic)
-            else self._format_reply(results, topic)
-        )
+        if self._is_numeric_recall_query(expanded_topic):
+            reply = self._format_numeric_reply(results, topic)
+        elif self._is_phrase_recall_query(expanded_topic):
+            reply = self._format_phrase_reply(results, topic)
+        else:
+            reply = self._format_reply(results, topic)
         return {
             "reply": reply,
             "memory_ids": [
@@ -203,7 +204,7 @@ class SearchAgent:
         for pattern in _INTENT_PATTERNS:
             m = pattern.search(text)
             if m:
-                raw = (m.group(1) if m.groups() else _NUMERIC_RECALL_TOPIC).strip(" ?.!,;:")
+                raw = (m.group(1) if m.groups() else text).strip(" ?.!,;:")
                 cleaned = self._clean_topic(raw)
                 if cleaned:
                     return cleaned
@@ -256,6 +257,10 @@ class SearchAgent:
             numeric = self._numeric_recall_results(memory_types, limit)
             if numeric:
                 return numeric
+        if self._is_phrase_recall_query(query):
+            phrase_results = self._phrase_recall_results(memory_types, limit)
+            if phrase_results:
+                return phrase_results
 
         seen_ids: set = set()
         merged: List[Dict] = []
@@ -358,8 +363,14 @@ User request: {query}
     def _is_numeric_recall_query(self, query: str) -> bool:
         lowered = query.lower()
         has_number_word = any(token in lowered for token in ("number", "six digit", "six-digit", "6 digit", "6-digit", "digits", "code"))
-        has_memory_word = any(token in lowered for token in ("remember", "memory", "test", "asked", "supposed", "specific", "random"))
+        has_memory_word = any(token in lowered for token in ("remember", "memory", "test", "asked", "supposed", "specific", "random", "raw input", "raw inputs"))
         return has_number_word and has_memory_word
+
+    def _is_phrase_recall_query(self, query: str) -> bool:
+        lowered = query.lower()
+        has_phrase_word = any(token in lowered for token in ("phrase", "quote", "saying", "exact words"))
+        has_memory_word = any(token in lowered for token in ("remember", "memory", "test", "asked", "supposed", "specific", "stored", "saved", "time", "date"))
+        return has_phrase_word and has_memory_word
 
     def _numeric_recall_results(self, memory_types: List[str], limit: int) -> List[Dict]:
         """Find stored six-digit facts directly instead of relying on broad keywords."""
@@ -404,7 +415,56 @@ User request: {query}
             ),
             reverse=True,
         )
-        return self._diversify(results, limit)
+        return results[:limit]
+
+    def _phrase_recall_results(self, memory_types: List[str], limit: int) -> List[Dict]:
+        """Find explicitly stored phrases and keep their source timestamps attached."""
+        results: List[Dict] = []
+        seen_ids: set = set()
+        for memory_type in memory_types:
+            mem_dir = self.config.memory_path / memory_type
+            if not mem_dir.exists():
+                continue
+            for path in mem_dir.glob("*.json"):
+                try:
+                    mem = json.loads(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                snippet = self._snippet(mem)
+                full_text = self._full_text(mem)
+                if not snippet or not full_text:
+                    continue
+                if self._is_search_echo(snippet) or self._is_query_echo(snippet):
+                    continue
+                phrase = self._extract_stored_phrase(mem, full_text)
+                if not phrase:
+                    continue
+                mem_id = mem.get("id", "")
+                if not mem_id or mem_id in seen_ids:
+                    continue
+                seen_ids.add(mem_id)
+                lowered = full_text.lower()
+                score = 20.0
+                score += 6.0 if "remember the phrase" in lowered else 0.0
+                score += 4.0 if mem.get("type") == "raw" and lowered.startswith("user:") else 0.0
+                score += 2.0 if "time" in lowered or "date" in lowered else 0.0
+                results.append({
+                    "match_type": memory_type,
+                    "file": str(path),
+                    "memory": mem,
+                    "score": score,
+                    "stored_phrase": phrase,
+                })
+
+        results.sort(
+            key=lambda r: (
+                float(r.get("score", 0) or 0),
+                float(r.get("memory", {}).get("importance", 0) or 0),
+                str(r.get("memory", {}).get("created", "")),
+            ),
+            reverse=True,
+        )
+        return results[:limit]
 
     def _should_search_media(self, query: str) -> bool:
         lowered = query.lower()
@@ -412,6 +472,37 @@ User request: {query}
             token in lowered
             for token in ("image", "photo", "picture", "screenshot", "video", "audio", "sound", "media")
         )
+
+    def _full_text(self, mem: Dict) -> str:
+        parts: List[str] = []
+        for field in _SNIPPET_FIELDS:
+            val = mem.get(field)
+            if val and str(val).strip():
+                parts.append(str(val).strip())
+        return "\n".join(parts)
+
+    def _extract_stored_phrase(self, mem: Dict, text: str) -> str:
+        patterns = [
+            r"remember\s+the\s+phrase\s+[\"“](.+?)[\"”]",
+            r"store\s+the\s+phrase\s+[\"“](.+?)[\"”]",
+            r"phrase\s+[\"“](.+?)[\"”]",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+            if match:
+                phrase = " ".join(match.group(1).split())
+                if phrase:
+                    return phrase
+
+        concept = str(mem.get("concept", "")).strip()
+        lowered = text.lower()
+        if (
+            concept
+            and any(ch in concept for ch in (" ", "-", "!", "?"))
+            and any(marker in lowered for marker in ("remember the phrase", "store the phrase", "stored phrase"))
+        ):
+            return concept.strip('"')
+        return ""
 
     def _snippet(self, mem: Dict) -> str:
         """Extract the most readable content snippet from a memory dict."""
@@ -519,3 +610,28 @@ User request: {query}
             if shown >= 3:
                 break
         return "\n".join(lines)
+
+    def _format_phrase_reply(self, results: List[Dict], topic: str) -> str:
+        """Answer phrase recall requests directly with timestamp evidence."""
+        if not results:
+            return (
+                f"I searched my memory for '{topic}' but did not find a stored "
+                "phrase for that request."
+            )
+
+        best = results[0]
+        phrase = str(best.get("stored_phrase") or self._extract_stored_phrase(best.get("memory", {}), self._full_text(best.get("memory", {})))).strip()
+        if not phrase:
+            return self._format_reply(results, topic)
+
+        mem = best.get("memory", {})
+        created = str(mem.get("created") or mem.get("created_at") or mem.get("generated_at") or "unknown time")
+        mem_type = mem.get("type") or str(best.get("match_type", "memory")).split("/")[-1]
+        mem_id = mem.get("id", "unknown")
+        snippet = self._snippet(mem)
+        return "\n".join([
+            f'The phrase is "{phrase}".',
+            f"Received at: {created}.",
+            "I found it in local memory, not by guessing.",
+            f"Source: [{mem_type}] {mem_id}: {snippet}",
+        ])

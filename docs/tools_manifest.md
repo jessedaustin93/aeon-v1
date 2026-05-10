@@ -66,13 +66,6 @@ Aeon supports separate LM Studio roles:
 All role values are optional. If a role is blank, Aeon falls back to the general
 LM Studio model where possible, then to rule-based behavior where needed.
 
-### Optional Anthropic Provider
-- Purpose: remote LLM provider for reflection and simulation when configured.
-- Importance: optional.
-- Link: https://console.anthropic.com/
-- Notes: install `anthropic`, set `AEON_V1_LLM_PROVIDER=anthropic`, and keep
-  `ANTHROPIC_API_KEY` in local environment only. Never commit keys.
-
 ### Future Local Providers
 - Purpose: add support for other local model servers such as Ollama or llama.cpp.
 - Importance: planned.

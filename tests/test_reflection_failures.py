@@ -18,6 +18,7 @@ import pytest
 from aeon_v1 import Config, evaluate_simulation, ingest, reflect
 from aeon_v1.evaluate import EvaluationStore
 from aeon_v1.reflect import _analyse
+from aeon_v1.memory_store import _vault_note_path
 from aeon_v1.simulate import simulate_action
 from aeon_v1.tasks import TaskStore
 
@@ -169,7 +170,7 @@ def _get_reflection_markdown(cfg) -> str:
     reflections = MemoryStore(cfg).list_memories("reflections")
     assert reflections, "No reflections found"
     r = sorted(reflections, key=lambda x: x.get("created", ""))[-1]
-    md_path = cfg.vault_path / "reflections" / f"{r['id']}.md"
+    md_path = _vault_note_path(cfg, "reflections", r["id"])
     return md_path.read_text(encoding="utf-8")
 
 

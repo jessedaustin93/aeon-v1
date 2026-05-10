@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .aging import age_weight
 from .config import Config
 
 # Fields checked during JSON memory search
@@ -21,7 +22,9 @@ _STOP_WORDS = {
 _TYPE_PRIORITY = {
     "semantic": 6,
     "episodic": 5,
+    "consolidation": 4,
     "consolidations": 4,
+    "reflection": 3,
     "reflections": 3,
     "media": 2,
     "raw": 1,
@@ -67,9 +70,16 @@ def search(
                 except Exception:
                     pass
 
-        # Also search vault Markdown (catches notes without a JSON counterpart)
-        vault_dir = config.vault_path / mem_type
-        if vault_dir.exists():
+        # Also search vault Markdown (catches notes without a JSON counterpart).
+        # New generated notes live under _generated; the legacy directory is
+        # still searched so older local vaults keep working after an update.
+        vault_dirs = [
+            config.vault_path / "_generated" / mem_type,
+            config.vault_path / mem_type,
+        ]
+        for vault_dir in vault_dirs:
+            if not vault_dir.exists():
+                continue
             for f in vault_dir.glob("*.md"):
                 mem_id = f.stem
                 if mem_id in seen_ids:
@@ -88,7 +98,7 @@ def search(
                 except Exception:
                     pass
 
-    results.sort(key=_rank_result, reverse=True)
+    results.sort(key=lambda r: _rank_result(r, config), reverse=True)
     return results
 
 
@@ -133,13 +143,21 @@ def _text_match_score(text: str, query_lower: str, query_tokens: List[str]) -> f
     return score
 
 
-def _rank_result(result: Dict) -> tuple:
+def _rank_result(result: Dict, config: Optional[Config] = None) -> tuple:
     memory = result.get("memory", {})
     mem_type = memory.get("type") or str(result.get("match_type", "")).split("/")[-1]
     importance = float(memory.get("importance", 0) or 0)
+    created = str(
+        memory.get("created")
+        or memory.get("created_at")
+        or memory.get("generated_at")
+        or ""
+    )
+    imp = float(memory.get("importance", 0) or 0)
+    w = age_weight(created, config, importance=imp) if config is not None else 1.0
     return (
-        float(result.get("score", 0) or 0),
+        float(result.get("score", 0) or 0) * w,
         _TYPE_PRIORITY.get(str(mem_type), 0),
         importance,
-        str(memory.get("created_at") or memory.get("generated_at") or ""),
+        created,
     )

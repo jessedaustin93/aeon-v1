@@ -9,15 +9,18 @@ from .memory_index_agent import MemoryIndexAgent
 from .search_agent import SearchAgent
 from .self_inspection_agent import SelfInspectionAgent
 from .builtin_tools import BUILTIN_TOOLS, COMMAND_PREVIEW, FILE_READ, FILE_WRITE, register_builtin_tools
+from .aging import age_weight
+from .embeddings import clear_cache as clear_embedding_cache, cosine_similarity, get_embedding
 from .background_consolidation import check_memory_growth, notify_memory_created
 from .config import Config
+from .conversation import ConversationTracker, classify_intent
 from .consolidate import consolidate_memories
 from .decision import DecisionStore, select_next_task
 from .evaluate import EvaluationStore, evaluate_simulation
 from .exceptions import CoreMemoryProtectedError, ToolAlreadyRegisteredError
 from .ingest import ingest
 from .linker import link_memories
-from .llm import generate_text
+from .llm import generate_text, score_importance
 from .memory_store import MemoryStore
 from .media import ingest_image_bytes, ingest_image_data_url, ingest_image_file
 from .orchestrator import Orchestrator
@@ -39,6 +42,10 @@ from .write_agent import WriteAgent, create_proposal
 __all__ = [
     "AGENT_ROLES",
     "AgentNode",
+    "age_weight",
+    "clear_embedding_cache",
+    "cosine_similarity",
+    "get_embedding",
     "DataWriteAgent",
     "MessageBus",
     "MessageBusError",
@@ -50,6 +57,8 @@ __all__ = [
     "CLIAuthProvider",
     "COMMAND_PREVIEW",
     "Config",
+    "ConversationTracker",
+    "classify_intent",
     "CoreMemoryProtectedError",
     "DecisionStore",
     "DriftReport",
@@ -84,6 +93,7 @@ __all__ = [
     "consolidate_memories",
     "evaluate_simulation",
     "generate_text",
+    "score_importance",
     "agent_run_context",
     "get_bus",
     "ingest",

@@ -43,6 +43,23 @@ def read_json(path: Path) -> Dict:
 def process_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not handle:
+                return False
+            try:
+                exit_code = ctypes.c_ulong()
+                if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                    return False
+                return exit_code.value == 259  # STILL_ACTIVE
+            finally:
+                kernel32.CloseHandle(handle)
+        except Exception:
+            return False
     try:
         os.kill(pid, 0)
         return True
@@ -52,7 +69,11 @@ def process_alive(pid: int) -> bool:
 
 def memory_counts(config: Config) -> Dict[str, int]:
     counts: Dict[str, int] = {}
-    for memory_type in ("raw", "episodic", "semantic", "reflections", "consolidations", "media"):
+    for memory_type in (
+        "raw", "episodic", "semantic",
+        "reflections", "consolidations", "media",
+        "tasks", "decisions", "simulations", "evaluations",
+    ):
         path = config.memory_path / memory_type
         if not path.exists():
             counts[memory_type] = 0

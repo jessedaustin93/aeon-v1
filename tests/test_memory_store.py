@@ -23,7 +23,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from aeon_v1 import Config, ingest, reflect, search
-from aeon_v1.memory_store import _score_importance
+from aeon_v1.memory_store import _score_importance, _vault_note_path
 
 
 @pytest.fixture
@@ -77,7 +77,7 @@ def test_markdown_note_created(cfg):
     result = ingest("Remember this important concept about learning.", config=cfg)
     raw_id = result["raw"]["id"]
 
-    md_path = cfg.vault_path / "raw" / f"{raw_id}.md"
+    md_path = _vault_note_path(cfg, "raw", raw_id)
     assert md_path.exists(), "Markdown vault note was not created"
 
     content = md_path.read_text()
@@ -88,7 +88,7 @@ def test_markdown_note_created(cfg):
 
 def test_markdown_frontmatter_fields(cfg):
     result = ingest("An important project milestone was reached.", config=cfg)
-    md_path = cfg.vault_path / "raw" / f"{result['raw']['id']}.md"
+    md_path = _vault_note_path(cfg, "raw", result["raw"]["id"])
     content = md_path.read_text()
 
     for field in ("id:", "title:", "type:", "created:", "source:", "importance:", "tags:", "links:"):
@@ -138,12 +138,12 @@ def test_obsidian_links_include_readable_title(cfg):
     assert result["episodic"] is not None, "Text should promote to episodic"
 
     ep_id = result["episodic"]["id"]
-    md_path = cfg.vault_path / "episodic" / f"{ep_id}.md"
+    md_path = _vault_note_path(cfg, "episodic", ep_id)
     content = md_path.read_text()
 
     raw_id = result["raw"]["id"]
-    # Link must use readable format: [[raw/{id}|some-title]]
-    assert f"[[raw/{raw_id}|" in content, (
+    # Link must use readable format and point at the generated-note folder.
+    assert f"[[_generated/raw/{raw_id}|" in content, (
         "Episodic vault note should link to raw source with readable display title"
     )
 
@@ -154,7 +154,7 @@ def test_reflection_links_use_readable_titles(cfg):
     result = reflect(config=cfg)
 
     ref_id = result["reflection"]["id"]
-    md_path = cfg.vault_path / "reflections" / f"{ref_id}.md"
+    md_path = _vault_note_path(cfg, "reflections", ref_id)
     content = md_path.read_text()
 
     # At least one source link should contain a pipe (readable format)
@@ -181,9 +181,20 @@ def test_episodic_markdown_note_created(cfg):
         pytest.skip("Text did not meet importance threshold")
 
     ep_id = result["episodic"]["id"]
-    md_path = cfg.vault_path / "episodic" / f"{ep_id}.md"
+    md_path = _vault_note_path(cfg, "episodic", ep_id)
     assert md_path.exists()
     assert "Episodic Memory" in md_path.read_text()
+
+
+def test_ingest_assigns_category_and_topic_hub(cfg):
+    result = ingest("Remember this phrase for a testing canary: alpha beta.", config=cfg)
+    raw = result["raw"]
+
+    assert raw["category"] == "test-memory"
+    assert (cfg.vault_path / "topics" / "test-memory.md").exists()
+
+    raw_note = _vault_note_path(cfg, "raw", raw["id"]).read_text(encoding="utf-8")
+    assert "[[topics/test-memory|Topic: Test Memory]]" in raw_note
 
 
 def test_no_episodic_for_low_importance(cfg):
@@ -261,7 +272,7 @@ def test_reflection_created(cfg):
     ref_id = result["reflection"]["id"]
 
     assert (cfg.memory_path / "reflections" / f"{ref_id}.json").exists()
-    assert (cfg.vault_path / "reflections" / f"{ref_id}.md").exists()
+    assert _vault_note_path(cfg, "reflections", ref_id).exists()
 
 
 def test_reflection_references_source_ids(cfg):
@@ -288,14 +299,26 @@ def test_multiple_reflections_both_preserved(cfg):
 
     assert (cfg.memory_path / "reflections" / f"{id1}.json").exists(), "First reflection must persist"
     assert (cfg.memory_path / "reflections" / f"{id2}.json").exists(), "Second reflection must persist"
-    assert (cfg.vault_path  / "reflections" / f"{id1}.md").exists()
-    assert (cfg.vault_path  / "reflections" / f"{id2}.md").exists()
+    assert _vault_note_path(cfg, "reflections", id1).exists()
+    assert _vault_note_path(cfg, "reflections", id2).exists()
+
+
+def test_reflection_samples_raw_archive_memories(cfg):
+    cfg.allow_low_value_reflections = True
+    cfg.min_reflection_sources = 1
+    result = ingest("Plain archive-only raw memory without promotion.", config=cfg)
+
+    reflection = reflect(config=cfg)["reflection"]
+
+    assert reflection is not None
+    assert result["raw"]["id"] in reflection["source_ids"]
+    assert reflection["source_types"].get("raw", 0) >= 1
 
 
 def test_no_reflection_without_memories(cfg):
     result = reflect(config=cfg)
     assert result["reflection"] is None
-    assert "No episodic or semantic" in result["message"]
+    assert "No memories" in result["message"]
 
 
 # ═══════════════════════════════════════ core memory protection ════════════
@@ -374,7 +397,7 @@ def test_reflection_has_structured_sections(cfg):
 
     assert result["reflection"] is not None, "Reflection should be created"
     ref_id = result["reflection"]["id"]
-    md_path = cfg.vault_path / "reflections" / f"{ref_id}.md"
+    md_path = _vault_note_path(cfg, "reflections", ref_id)
     content = md_path.read_text()
 
     required_sections = [
@@ -439,9 +462,12 @@ def test_suggested_core_updates_not_written_to_vault_core(cfg):
 
 
 def test_duplicate_reflection_skipped(cfg):
-    """Second reflect() on the same source IDs must be skipped when skip_duplicate_reflections=True."""
+    """Second reflect() on the same source IDs must be skipped when skip_duplicate_reflections=True.
+    Uses archive_random so the time-window duplicate guard is active
+    (sequential uses cursor rotation as its own dedup instead)."""
     ingest("I learned an important project goal must be remembered.", config=cfg)
     cfg.skip_duplicate_reflections = True
+    cfg.reflection_sampling_strategy = "archive_random"
 
     r1 = reflect(config=cfg)
     r2 = reflect(config=cfg)

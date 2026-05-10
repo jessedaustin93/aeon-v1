@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from aeon_v1 import Config, evaluate_simulation
+from aeon_v1.memory_store import _vault_note_path
 from aeon_v1.simulate import SimulationStore, simulate_action
 from aeon_v1.tasks import TaskStore
 
@@ -70,7 +71,7 @@ def test_simulation_feedback_in_json_on_disk(cfg):
 
 def test_simulation_feedback_in_markdown_frontmatter(cfg):
     sim = _make_simulation(cfg)
-    md = (cfg.vault_path / "simulations" / f"{sim['id']}.md").read_text(encoding="utf-8")
+    md = _vault_note_path(cfg, "simulations", sim["id"]).read_text(encoding="utf-8")
     assert "feedback: unknown" in md
 
 
@@ -109,7 +110,7 @@ def test_update_feedback_persists_to_json(cfg):
 def test_update_feedback_updates_markdown(cfg):
     sim = _make_simulation(cfg)
     SimulationStore(cfg).update_feedback(sim["id"], "failure")
-    md = (cfg.vault_path / "simulations" / f"{sim['id']}.md").read_text(encoding="utf-8")
+    md = _vault_note_path(cfg, "simulations", sim["id"]).read_text(encoding="utf-8")
     assert "feedback: failure" in md
 
 

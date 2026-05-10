@@ -8,8 +8,9 @@ created: 2026-04-29T00:00:00+00:00
 
 Welcome to the Aeon-V1 knowledge graph.
 
-**To explore the graph view, backlinks, and tag search: open this `vault/` folder in Obsidian.**  
-Obsidian is optional — all files are plain Markdown readable in any editor.
+Open this `vault/` folder in Obsidian to explore graph view, backlinks, and tag search. Obsidian is optional; all files are plain Markdown readable in any editor.
+
+Start here: [[Aeon Memory Dashboard]]
 
 ---
 
@@ -17,51 +18,51 @@ Obsidian is optional — all files are plain Markdown readable in any editor.
 
 | Layer | Link | Purpose |
 |---|---|---|
-| Raw | [[Raw Memory]] | Verbatim captures — never modified after ingestion |
+| Raw | [[Raw Memory]] | Verbatim captures, never modified after ingestion |
 | Episodic | [[Episodic Memory]] | Summarized meaningful events derived from raw |
 | Semantic | [[Semantic Memory]] | Reusable concepts, rules, and patterns |
 | Reflections | [[Reflections]] | Recursive analysis of episodic and semantic memory |
 | Tasks | [[Tasks]] | Structured task objects derived from reflection |
 | Decisions | [[Decisions]] | Append-only decision records from the selection engine |
-| Simulations | [[Simulations]] | Proposed-action records — never executed automatically |
-| Core | [[Core Memory]] | Stable identity, goals, and rules — human-gated |
+| Simulations | [[Simulations]] | Proposed-action records, never executed automatically |
+| Core | [[Core Memory]] | Stable identity, goals, and rules, human-gated |
 
 ---
 
-## How to Navigate
+## How To Navigate
 
-- **Graph view** (`Ctrl+G` in Obsidian) — see how all notes connect
-- **Tag search** — filter memories by topic tag
-- **Backlinks** — trace any insight back to its raw source
-- **Wikilinks** — every derived memory links to the raw it came from
+- Graph view: use Obsidian's graph view to see how notes connect.
+- Tag search: filter memories by topic tag.
+- Backlinks: trace any insight back to its source.
+- Wikilinks: derived memory records link toward their sources when available.
 
 ---
 
 ## Memory Flow
 
-```
+```text
 Raw (verbatim, immutable)
-  └─▶ Episodic (summarized event, if importance ≥ threshold)
-        └─▶ Semantic (reusable concept, if semantic keyword detected)
+  -> Episodic (summarized event, if importance >= threshold)
+      -> Semantic (reusable concept, if semantic keyword detected)
 
 Episodic + Semantic
-  └─▶ Reflection (recursive analysis, structured 7-section note)
-        └─▶ Tasks (suggested actions converted to task objects)
-              └─▶ Decision (best task selected by scoring engine)
-                    └─▶ Simulation (proposed-action record, human review required)
+  -> Reflection (recursive analysis, structured 7-section note)
+      -> Tasks (suggested actions converted to task objects)
+          -> Decision (best task selected by scoring engine)
+              -> Simulation (proposed-action record, human review required)
 
-Core Memory (human-gated — never written automatically)
+Core Memory (human-gated, never written automatically)
 ```
 
 ---
 
 ## Example Notes
 
-- [[example_raw]] — an example raw memory input
-- [[example_episodic]] — the episodic note derived from the example raw
-- [[example_semantic]] — the semantic concept extracted from the example
-- [[example_reflection]] — the reflection note produced after analysis
+- [[_generated/raw/example_raw|example_raw]]: an example raw memory input
+- [[_generated/episodic/example_episodic|example_episodic]]: the episodic note derived from the example raw
+- [[_generated/semantic/example_semantic|example_semantic]]: the semantic concept extracted from the example
+- [[_generated/reflections/example_reflection|example_reflection]]: the reflection note produced after analysis
 
 ---
 
-[[Core Memory]] | [[Reflections]] | [[Tasks]] | [[Decisions]] | [[Simulations]]
+[[Aeon Memory Dashboard]] | [[Core Memory]] | [[Reflections]] | [[Tasks]] | [[Decisions]] | [[Simulations]]

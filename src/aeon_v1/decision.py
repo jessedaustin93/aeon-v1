@@ -10,7 +10,7 @@ import json
 from typing import Dict, List, Optional
 
 from .config import Config
-from .memory_store import _generate_id, _wikilink
+from .memory_store import _generate_id, _vault_note_path, _wikilink
 from .tasks import TaskStore
 from .time_utils import local_date_time_string, utc_now_iso
 
@@ -24,7 +24,7 @@ class DecisionStore:
 
     def _ensure_dirs(self) -> None:
         (self.config.memory_path / "decisions").mkdir(parents=True, exist_ok=True)
-        (self.config.vault_path / "decisions").mkdir(parents=True, exist_ok=True)
+        _vault_note_path(self.config, "decisions", ".keep").parent.mkdir(parents=True, exist_ok=True)
 
     def store(
         self,
@@ -72,7 +72,7 @@ class DecisionStore:
         return sorted(decisions, key=lambda d: d.get("created_at", ""))
 
     def _write_markdown(self, decision: Dict) -> None:
-        md_path = self.config.vault_path / "decisions" / f"{decision['id']}.md"
+        md_path = _vault_note_path(self.config, "decisions", decision["id"])
         fm_lines = ["---"]
         for key, val in [
             ("id",               decision["id"]),

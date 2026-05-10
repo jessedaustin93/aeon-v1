@@ -33,7 +33,6 @@ pip install -e ".[dev]"
 Optional extras:
 
 ```bash
-pip install anthropic        # Anthropic provider support
 pip install -e ".[hardware]" # ESP32-S3 USB approval provider support
 ```
 
@@ -46,7 +45,7 @@ pytest
 Expected result for the current suite:
 
 ```text
-612 passed, 1 skipped
+691 passed
 ```
 
 ## 4. Run Aeon Without An LLM
@@ -163,31 +162,7 @@ Not every LM Studio model supports OpenAI-style tool calling well. If a
 tool-calling request fails or returns no final content, Aeon retries the deep
 model without tools and then falls back to rule-based behavior if needed.
 
-## 7. Optional Anthropic Provider
-
-Install the optional package:
-
-```bash
-pip install anthropic
-```
-
-Set environment variables:
-
-```bash
-export AEON_V1_LLM=1
-export AEON_V1_LLM_PROVIDER=anthropic
-export ANTHROPIC_API_KEY=your_key_here
-```
-
-PowerShell:
-
-```powershell
-$env:AEON_V1_LLM="1"
-$env:AEON_V1_LLM_PROVIDER="anthropic"
-$env:ANTHROPIC_API_KEY="your_key_here"
-```
-
-## 8. Optional Obsidian Vault
+## 7. Optional Obsidian Vault
 
 Install Obsidian locally from the official download page:
 

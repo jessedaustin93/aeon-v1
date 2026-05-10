@@ -1,20 +1,17 @@
-"""Optional LLM adapter for Aeon-V1 Layer 4.
+"""Optional local LLM adapter for Aeon-V1 Layer 4.
 
 No provider is a hard dependency. generate_text() returns None whenever LLM
 is disabled or any error occurs — callers always fall back to rule-based behavior.
 
-Providers:
-    anthropic   — pip install anthropic; requires ANTHROPIC_API_KEY
+Provider:
     lmstudio    — LM Studio local server (OpenAI-compatible REST, no extra packages)
 
 Environment variables:
     AEON_V1_LLM=1                        — enable LLM
-    AEON_V1_LLM_PROVIDER=lmstudio        — select provider (default: anthropic)
-    AEON_V1_LLM_MODEL=google/gemma-4-e4b — model name
+    AEON_V1_LLM_MODEL=google/gemma-4-e4b — local model name
     AEON_V1_LLM_SEARCH_MODEL=mistral/...  — optional memory-search planner model
     AEON_V1_LLM_BASE_URL=http://...      — LM Studio base URL (default: http://localhost:1234/v1)
     AEON_V1_LLM_REASONING_EFFORT=low     — LM Studio reasoning effort for reasoning models
-    ANTHROPIC_API_KEY=<key>              — required only for anthropic provider
 """
 import json
 import os
@@ -80,11 +77,7 @@ def generate_text(prompt: str, config: Optional[Config] = None) -> Optional[str]
         config = Config()
     if not config.llm_enabled:
         return None
-    if config.llm_provider == "anthropic":
-        return _call_anthropic(prompt, config)
-    if config.llm_provider == "lmstudio":
-        return _call_lmstudio_messages([{"role": "user", "content": prompt}], config)
-    return None
+    return _call_lmstudio_messages([{"role": "user", "content": prompt}], config)
 
 
 def generate_chat(messages: List[Dict], config: Optional[Config] = None) -> Optional[str]:
@@ -93,16 +86,11 @@ def generate_chat(messages: List[Dict], config: Optional[Config] = None) -> Opti
         config = Config()
     if not config.llm_enabled:
         return None
-    if config.llm_provider == "lmstudio":
-        result = _call_lmstudio_messages(messages, config, model=config.llm_chat_model)
-        if result:
-            return result
-        if config.llm_chat_model != config.llm_model:
-            return _call_lmstudio_messages(messages, config, model=config.llm_model)
-        return None
-    if config.llm_provider == "anthropic":
-        prompt = "\n\n".join(f"{m.get('role', 'user')}: {m.get('content', '')}" for m in messages)
-        return _call_anthropic(prompt, config)
+    result = _call_lmstudio_messages(messages, config, model=config.llm_chat_model)
+    if result:
+        return result
+    if config.llm_chat_model != config.llm_model:
+        return _call_lmstudio_messages(messages, config, model=config.llm_model)
     return None
 
 
@@ -115,7 +103,7 @@ def generate_search_text(prompt: str, config: Optional[Config] = None) -> Option
     """
     if config is None:
         config = Config()
-    if not config.llm_enabled or config.llm_provider != "lmstudio":
+    if not config.llm_enabled:
         return None
     return _call_lmstudio_messages(
         [{"role": "user", "content": prompt}],
@@ -134,7 +122,7 @@ def generate_image_description(
     """Describe an image through an OpenAI-compatible vision model."""
     if config is None:
         config = Config()
-    if not config.llm_enabled or config.llm_provider != "lmstudio":
+    if not config.llm_enabled:
         return None
     model = resolve_lmstudio_vision_model(config)
     try:
@@ -168,25 +156,6 @@ def generate_image_description(
         model=model,
     )
 
-
-def _call_anthropic(prompt: str, config: Config) -> Optional[str]:
-    """Call Anthropic Messages API. Returns None on any error."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        return None
-    try:
-        import anthropic  # optional — not in install_requires
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=config.llm_model,
-            max_tokens=config.llm_max_tokens,
-            temperature=config.llm_temperature,
-            messages=[{"role": "user", "content": prompt}],
-            timeout=config.llm_timeout_seconds,
-        )
-        return response.content[0].text
-    except Exception:
-        return None
 
 
 _LM_STUDIO_MAX_ATTEMPTS = 5
@@ -337,7 +306,7 @@ def generate_with_memory(
 
     The LLM may call query_memory up to _LM_STUDIO_MAX_ATTEMPTS times to
     fetch relevant memories before producing a final text response.
-    Falls back to generate_text() for providers that don't support tool calling.
+    Falls back to an inlined local LM Studio prompt when tool calling is off.
 
     All communication between the LLM loop and index_agent goes through the
     message bus — index_agent._handle_bus_query is registered transiently for
@@ -360,26 +329,23 @@ def generate_with_memory(
     bus = get_bus()
     bus.subscribe("memory.query", index_agent._handle_bus_query)
     try:
-        if config.llm_provider == "lmstudio":
-            result = _call_lmstudio_with_tools(prompt, config)
-            if result:
-                return result
-            result = _call_lmstudio_messages(
+        result = _call_lmstudio_with_tools(prompt, config)
+        if result:
+            return result
+        result = _call_lmstudio_messages(
+            [{"role": "user", "content": prompt}],
+            config,
+            model=config.llm_deep_model,
+        )
+        if result:
+            return result
+        if config.llm_deep_model != config.llm_model:
+            return _call_lmstudio_messages(
                 [{"role": "user", "content": prompt}],
                 config,
-                model=config.llm_deep_model,
+                model=config.llm_model,
             )
-            if result:
-                return result
-            if config.llm_deep_model != config.llm_model:
-                return _call_lmstudio_messages(
-                    [{"role": "user", "content": prompt}],
-                    config,
-                    model=config.llm_model,
-                )
-            return None
-        # Other providers: fall back to inlined prompt (no tool calling)
-        return generate_text(prompt, config)
+        return None
     finally:
         bus.unsubscribe("memory.query", index_agent._handle_bus_query)
 
@@ -618,6 +584,70 @@ OUTPUT FORMAT — use exactly these headers in this order:
 [bullet points about implied next steps to investigate]
 
 Write only these 4 sections. Nothing before or after."""
+
+
+def build_conversation_arc_prompt(arc: Dict) -> str:
+    """Build a prompt for LLM-enhanced conversation arc narrative.
+
+    The LLM is given the raw arc data and asked to write a concise episodic
+    summary. Falls back to rule-based text if LLM is unavailable.
+    """
+    shifts_text = "\n".join(
+        f"- Turn {s['at_turn']}: {s['from_intent']} → {s['to_intent']}"
+        + (f" [{s['speaker']}]: \"{s['snippet']}\"" if s.get("snippet") else "")
+        for s in arc.get("shifts", [])
+    ) or "- None detected"
+
+    return f"""You are summarizing a conversation arc for an AI memory system.
+
+CONVERSATION DATA:
+- Session: {arc.get('session_id', '')}
+- Turns: {arc.get('turn_count', 0)}
+- Dominant intent: {arc.get('dominant_intent', 'general')}
+- Intent shifts detected:
+{shifts_text}
+
+TASK:
+Write a single concise paragraph (3-5 sentences) that describes how the user's \
+needs or focus evolved during this conversation. Highlight any noteworthy shifts \
+in tone or intent. Use first-person from the memory system's perspective \
+(e.g. "I noticed the user shifted from...").
+
+SAFETY RULES:
+- Use only the data provided — do not invent quotes or events.
+- Do not suggest actions or commands.
+- Do not reference specific usernames or private information.
+
+Write only the paragraph. Nothing before or after."""
+
+
+def score_importance(text: str, config: Optional[Config] = None) -> Optional[float]:
+    """Ask the LLM to rate memory importance on [0.0, 1.0].
+
+    Uses the search/background model so the main chat model is not interrupted.
+    Returns None on failure so callers can use rule-based scoring without crashing.
+    """
+    if config is None:
+        config = Config()
+    if not config.llm_enabled:
+        return None
+
+    prompt = (
+        "Rate the long-term importance of the following memory on a scale of 0.0 to 1.0.\n\n"
+        "0.0 = trivial or ephemeral (casual chat, already-resolved status, filler)\n"
+        "0.5 = useful context (technique, minor insight, situational knowledge)\n"
+        "1.0 = highly significant (key decision, major insight, critical system behavior)\n\n"
+        "Respond with only a single decimal number between 0.0 and 1.0. "
+        "No explanation, no units, no extra text.\n\n"
+        f"Memory:\n{text[:800]}"
+    )
+    raw = generate_search_text(prompt, config)
+    if not raw:
+        return None
+    match = re.search(r"\b(0(\.\d+)?|1(\.0*)?)\b", raw.strip())
+    if match:
+        return max(0.0, min(1.0, float(match.group(0))))
+    return None
 
 
 def build_simulation_prompt_sparse(task: Dict) -> str:

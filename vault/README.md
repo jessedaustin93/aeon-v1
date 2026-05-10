@@ -39,7 +39,7 @@ vault/
 No plugins are required. Generated notes use YAML frontmatter and wikilinks like:
 
 ```text
-[[raw/abc12345|readable-title]]
+[[_generated/raw/abc12345|readable-title]]
 ```
 
 The ignored `.obsidian/` directory stores local Obsidian UI/workspace state. Do not rely on it for portable project behavior.

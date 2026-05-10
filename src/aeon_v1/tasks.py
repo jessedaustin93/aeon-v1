@@ -12,7 +12,7 @@ import re
 from typing import Dict, List, Optional
 
 from .config import Config
-from .memory_store import _generate_id, _make_title, _wikilink
+from .memory_store import _generate_id, _make_title, _vault_note_path, _wikilink
 from .time_utils import local_date_time_string, utc_now_iso
 
 
@@ -41,7 +41,7 @@ class TaskStore:
 
     def _ensure_dirs(self) -> None:
         (self.config.memory_path / "tasks").mkdir(parents=True, exist_ok=True)
-        (self.config.vault_path / "tasks").mkdir(parents=True, exist_ok=True)
+        _vault_note_path(self.config, "tasks", ".keep").parent.mkdir(parents=True, exist_ok=True)
 
     # ---------------------------------------------------------------- create --
 
@@ -151,7 +151,7 @@ class TaskStore:
     # ------------------------------------------------------------- markdown --
 
     def _write_markdown(self, task: Dict) -> None:
-        md_path = self.config.vault_path / "tasks" / f"{task['id']}.md"
+        md_path = _vault_note_path(self.config, "tasks", task["id"])
         fm_lines = ["---"]
         for key, val in [
             ("id",         task["id"]),

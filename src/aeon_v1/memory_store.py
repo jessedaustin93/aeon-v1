@@ -58,7 +58,32 @@ _TAG_KEYWORD_MAP: Dict[str, str] = {
     "concept":    "concept",
     "pattern":    "pattern",
     "rule":       "rule",
+    "preference": "preference",
+    "prefer":     "preference",
+    "dashboard":  "dashboard",
+    "launcher":   "launcher",
+    "obsidian":   "obsidian",
+    "lm studio":  "lm-studio",
+    "memory":     "memory",
+    "phrase":     "phrase",
+    "number":     "number",
+    "image":      "media",
+    "picture":    "media",
+    "video":      "media",
+    "sound":      "audio",
+    "audio":      "audio",
 }
+
+_CATEGORY_RULES: List[Tuple[str, Tuple[str, ...]]] = [
+    ("test-memory", ("test", "testing", "canary", "remember the phrase", "six digit", "6 digit", "random number")),
+    ("media", ("image", "picture", "photo", "screenshot", "video", "audio", "sound")),
+    ("tools", ("lm studio", "obsidian", "github", "dashboard", "launcher", "codex", "assistant", "chatgpt")),
+    ("bugs", ("bug", "broken", "fix", "wrong", "error", "issue", "not working")),
+    ("preferences", ("prefer", "preference", "tone", "talk like", "respond", "style")),
+    ("project", ("aeon", "project", "v1", "memory system", "recursive", "repo")),
+    ("tasks", ("need to", "should", "todo", "task", "plan", "next step")),
+    ("learning", ("learned", "insight", "realized", "noticed", "pattern", "principle")),
+]
 
 # Maps memory type -> vault subdirectory name
 _VAULT_DIR: Dict[str, str] = {
@@ -66,6 +91,23 @@ _VAULT_DIR: Dict[str, str] = {
     "episodic":   "episodic",
     "semantic":   "semantic",
     "reflection": "reflections",
+}
+
+_GENERATED_VAULT_TYPES = {
+    "raw", "episodic", "semantic", "reflections", "consolidations", "media",
+    "agents", "tasks", "decisions", "simulations", "evaluations",
+}
+
+_CATEGORY_TITLES: Dict[str, str] = {
+    "test-memory": "Test Memory",
+    "media": "Media",
+    "tools": "Tools",
+    "bugs": "Bugs",
+    "preferences": "Preferences",
+    "project": "Project",
+    "tasks": "Tasks",
+    "learning": "Learning",
+    "general": "General",
 }
 
 
@@ -103,6 +145,16 @@ def _extract_tags(text: str) -> List[str]:
     return tags
 
 
+def _classify_memory(text: str, tags: Optional[List[str]] = None, source: str = "") -> str:
+    text_lower = text.lower()
+    tag_set = set(tags or [])
+    source_lower = source.lower()
+    for category, signals in _CATEGORY_RULES:
+        if any(signal in text_lower or signal in tag_set or signal in source_lower for signal in signals):
+            return category
+    return "general"
+
+
 def _make_title(text: str, max_words: int = 6) -> str:
     """Short, filesystem-safe title derived from text content.
 
@@ -121,8 +173,52 @@ def _wikilink(vault_subdir: str, mem_id: str, title: Optional[str] = None) -> st
     falling back to [[subdir/id]] when not.
     The subdir/id path resolves to vault/{subdir}/{id}.md.
     """
+    if vault_subdir in _GENERATED_VAULT_TYPES:
+        vault_subdir = f"_generated/{vault_subdir}"
     path = f"{vault_subdir}/{mem_id}" if vault_subdir else mem_id
     return f"[[{path}|{title}]]" if title else f"[[{path}]]"
+
+
+def _vault_note_path(config: "Config", vault_subdir: str, mem_id: str) -> Path:
+    """Return the Obsidian-facing path for generated memory notes."""
+    if vault_subdir in _GENERATED_VAULT_TYPES:
+        path = config.vault_path / "_generated" / vault_subdir / f"{mem_id}.md"
+    else:
+        path = config.vault_path / vault_subdir / f"{mem_id}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _topic_link(category: str) -> str:
+    title = _CATEGORY_TITLES.get(category, category.replace("-", " ").title())
+    return _wikilink("topics", category, f"Topic: {title}")
+
+
+def _ensure_topic_note(config: "Config", category: str) -> None:
+    topic_dir = config.vault_path / "topics"
+    topic_dir.mkdir(parents=True, exist_ok=True)
+    path = topic_dir / f"{category}.md"
+    if path.exists():
+        return
+    title = _CATEGORY_TITLES.get(category, category.replace("-", " ").title())
+    body = (
+        f"# Topic: {title}\n\n"
+        "This topic page is a stable Obsidian cluster point for related memories.\n\n"
+        "[[index]]"
+    )
+    _write_markdown(
+        path,
+        frontmatter={
+            "id": category,
+            "title": f"topic-{category}",
+            "type": "topic",
+            "category": category,
+            "tags": ["topic"],
+            "links": [],
+        },
+        body=body,
+        config=config,
+    )
 
 
 def _guard_core_path(path: Path, config: Optional[Config]) -> None:
@@ -181,7 +277,9 @@ class MemoryStore:
         now = utc_now_iso()
         importance = _score_importance(text)
         tags = _extract_tags(text)
+        category = _classify_memory(text, tags=tags, source=source)
         title = _make_title(text)
+        _ensure_topic_note(self.config, category)
 
         memory = {
             "id": mem_id,
@@ -191,6 +289,7 @@ class MemoryStore:
             "source": source,
             "text": text,         # immutable — never rewritten after this point
             "importance": importance,
+            "category": category,
             "tags": tags,
             "links": [],
         }
@@ -199,7 +298,7 @@ class MemoryStore:
             json.dumps(memory, indent=2), encoding="utf-8"
         )
         _write_markdown(
-            self.config.vault_path / "raw" / f"{mem_id}.md",
+            _vault_note_path(self.config, "raw", mem_id),
             frontmatter={
                 "id": mem_id,
                 "title": title,
@@ -207,13 +306,14 @@ class MemoryStore:
                 "created": now,
                 "source": source,
                 "importance": importance,
+                "category": category,
                 "tags": tags,
                 "links": [],
             },
             body=(
                 f"# {title}\n\n"
                 f"{text}\n\n"
-                "[[Raw Memory]] | [[Episodic Memory]] | [[Core Memory]]"
+                f"[[Raw Memory]] | {_topic_link(category)}"
             ),
             config=self.config,
         )
@@ -235,6 +335,8 @@ class MemoryStore:
         now = utc_now_iso()
         title = _make_title(summary)
         raw_link = _wikilink("raw", raw_id, raw_title)
+        category = _classify_memory(summary, tags=tags, source=source)
+        _ensure_topic_note(self.config, category)
 
         memory = {
             "id": mem_id,
@@ -245,6 +347,7 @@ class MemoryStore:
             "summary": summary,
             "raw_ref": raw_id,
             "importance": importance,
+            "category": category,
             "tags": tags,
             "links": [raw_link],
         }
@@ -253,7 +356,7 @@ class MemoryStore:
             json.dumps(memory, indent=2), encoding="utf-8"
         )
         _write_markdown(
-            self.config.vault_path / "episodic" / f"{mem_id}.md",
+            _vault_note_path(self.config, "episodic", mem_id),
             frontmatter={
                 "id": mem_id,
                 "title": title,
@@ -261,6 +364,7 @@ class MemoryStore:
                 "created": now,
                 "source": source,
                 "importance": importance,
+                "category": category,
                 "tags": tags,
                 "links": [raw_link],
             },
@@ -268,7 +372,7 @@ class MemoryStore:
                 f"# {title}\n\n"
                 f"**Summary:** {summary}\n\n"
                 f"**Source:** {raw_link}\n\n"
-                "[[Episodic Memory]] | [[Semantic Memory]] | [[Reflections]]"
+                f"[[Episodic Memory]] | {_topic_link(category)}"
             ),
             config=self.config,
         )
@@ -288,6 +392,8 @@ class MemoryStore:
         mem_id = _generate_id()
         now = utc_now_iso()
         title = _make_title(concept)
+        category = _classify_memory(f"{concept}\n{description}", tags=tags, source=source)
+        _ensure_topic_note(self.config, category)
 
         memory = {
             "id": mem_id,
@@ -298,6 +404,7 @@ class MemoryStore:
             "concept": concept,
             "description": description,
             "importance": importance,
+            "category": category,
             "tags": tags,
             "links": [],
         }
@@ -306,7 +413,7 @@ class MemoryStore:
             json.dumps(memory, indent=2), encoding="utf-8"
         )
         _write_markdown(
-            self.config.vault_path / "semantic" / f"{mem_id}.md",
+            _vault_note_path(self.config, "semantic", mem_id),
             frontmatter={
                 "id": mem_id,
                 "title": title,
@@ -314,6 +421,7 @@ class MemoryStore:
                 "created": now,
                 "source": source,
                 "importance": importance,
+                "category": category,
                 "tags": tags,
                 "links": [],
             },
@@ -321,7 +429,7 @@ class MemoryStore:
                 f"# {concept}\n\n"
                 f"**Concept:** {concept}\n\n"
                 f"**Description:** {description}\n\n"
-                "[[Semantic Memory]] | [[Core Memory]] | [[Episodic Memory]]"
+                f"[[Semantic Memory]] | {_topic_link(category)}"
             ),
             config=self.config,
         )
@@ -377,7 +485,7 @@ class MemoryStore:
             json.dumps(memory, indent=2), encoding="utf-8"
         )
         _write_markdown(
-            self.config.vault_path / "reflections" / f"{mem_id}.md",
+            _vault_note_path(self.config, "reflections", mem_id),
             frontmatter={
                 "id": mem_id,
                 "title": title,

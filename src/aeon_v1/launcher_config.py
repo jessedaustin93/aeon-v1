@@ -12,7 +12,9 @@ DEFAULT_LAUNCHER_CONFIG: Dict[str, Any] = {
     },
     "runner": {
         "poll_seconds": 5,
-        "link_every_passes": 12,
+        "link_every_passes": 60,
+        "reflect_every_passes": 720,
+        "consolidate_every_passes": 120,
     },
     "lm_studio": {
         "enabled": True,

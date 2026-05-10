@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from .config import Config
+from .conversation import ConversationTracker
 from .ingest import ingest
 from .linker import link_memories
 from .llm import generate_chat, generate_text, generate_with_memory
@@ -56,7 +57,7 @@ class ChatOptions:
     base_path: Path = Path(".")
     source: str = "aeon-chat"
     no_ingest: bool = False
-    auto_link: bool = True
+    auto_link: bool = False
     auto_tick: bool = False
     reflect_every: int = 0
     memory_limit: int = 5
@@ -89,6 +90,7 @@ class TerminalChatApp(cmd.Cmd):
         self.self_agent = SelfInspectionAgent(config)
         self.turns: List[ChatTurn] = _load_recent_turns(options.transcript_path, limit=6)
         self.turn_count = 0
+        self.tracker = ConversationTracker(config=config)
         self.config.ensure_dirs()
 
     # ------------------------------------------------------------------ input
@@ -184,6 +186,7 @@ class TerminalChatApp(cmd.Cmd):
 
     def do_exit(self, arg: str) -> bool:
         """Exit Aeon chat."""
+        self._close_tracker_safely()
         print("Aeon chat closed.")
         return True
 
@@ -205,6 +208,8 @@ class TerminalChatApp(cmd.Cmd):
 
     def handle_chat(self, user_text: str) -> ChatTurn:
         self.turn_count += 1
+        self.tracker.add_turn("user", user_text)
+
         self_result = self.self_agent.handle_chat_query_with_ids(user_text)
         search_result = None if self_result else self.search_agent.handle_chat_query_with_ids(user_text)
         user_memory_id = None
@@ -226,6 +231,8 @@ class TerminalChatApp(cmd.Cmd):
                 index_agent=self.index_agent,
             )
             llm_used = not response.startswith(local_fallback_prefix())
+
+        self.tracker.add_turn("aeon", response)
 
         assistant_memory_id = None
         if not self.options.no_ingest and self_result is None and search_result is None:
@@ -250,6 +257,12 @@ class TerminalChatApp(cmd.Cmd):
         self.turns.append(turn)
         self._append_transcript(turn)
         return turn
+
+    def _close_tracker_safely(self) -> None:
+        try:
+            self.tracker.close(store=True)
+        except Exception:
+            pass
 
     def _ingest_safely(self, text: str) -> Optional[str]:
         try:
@@ -541,7 +554,7 @@ def parse_args(argv: Optional[List[str]] = None) -> ChatOptions:
     parser.add_argument("--base-path", default=".", help="Repo root containing memory/ and vault/.")
     parser.add_argument("--source", default="aeon-chat", help="Source label for ingested chat turns.")
     parser.add_argument("--no-ingest", action="store_true", help="Do not store chat turns in memory.")
-    parser.add_argument("--no-link", action="store_true", help="Do not run link_memories after turns.")
+    parser.add_argument("--auto-link", action="store_true", help="Run link_memories after each turn. Usually the background runner handles this.")
     parser.add_argument("--auto-tick", action="store_true", help="Run one Orchestrator.tick() after each turn.")
     parser.add_argument(
         "--reflect-every",
@@ -567,7 +580,7 @@ def parse_args(argv: Optional[List[str]] = None) -> ChatOptions:
         base_path=base_path,
         source=args.source,
         no_ingest=args.no_ingest,
-        auto_link=not args.no_link,
+        auto_link=args.auto_link,
         auto_tick=args.auto_tick,
         reflect_every=max(0, args.reflect_every),
         memory_limit=max(1, args.memory_limit),

@@ -88,6 +88,34 @@ def test_search_agent_answers_six_digit_number_request(tmp_path):
     assert result["reply"].startswith("The number is 123456.")
 
 
+def test_search_agent_answers_phrase_recall_with_timestamp(tmp_path):
+    cfg = Config(tmp_path)
+    ingest(
+        'User: remember the phrase "Have a little cup of Liber-TEA!" '
+        "and return the phrase plus the date and time I gave it to you.",
+        config=cfg,
+    )
+    agent = SearchAgent(cfg)
+
+    result = agent.handle_chat_query_with_ids("search for phrase i asked you to remember")
+
+    assert result is not None
+    assert 'The phrase is "Have a little cup of Liber-TEA!"' in result["reply"]
+    assert "Received at:" in result["reply"]
+    assert "Source: [raw]" in result["reply"]
+
+
+def test_search_agent_direct_phrase_question_does_not_use_number_path(tmp_path):
+    cfg = Config(tmp_path)
+    ingest('User: remember the phrase "riverglass screwdriver" for a test.', config=cfg)
+    agent = SearchAgent(cfg)
+
+    result = agent.handle_chat_query_with_ids("what phrase are you supposed to remember?")
+
+    assert result is not None
+    assert 'The phrase is "riverglass screwdriver"' in result["reply"]
+
+
 def test_search_agent_uses_llm_planned_queries(tmp_path, monkeypatch):
     cfg = Config(tmp_path)
     ingest("An online critic said Aeon is just a memory.txt file, which is not accurate.", config=cfg)

@@ -19,7 +19,7 @@ from .bus import get_bus
 from .config import Config
 from .decision import DecisionStore
 from .evaluate import EvaluationStore
-from .memory_store import _generate_id, _wikilink
+from .memory_store import _generate_id, _vault_note_path, _wikilink
 from .schemas import make_agent_message
 from .simulate import SimulationStore
 from .tasks import TaskStore
@@ -331,7 +331,7 @@ class AgentNode:
         self._write_markdown(record)
 
     def _write_markdown(self, record: Dict) -> None:
-        md_path = self.config.vault_path / "agents" / f"{self.id}.md"
+        md_path = _vault_note_path(self.config, "agents", self.id)
         fm_lines = ["---"]
         for key, val in [
             ("id",               record["id"]),

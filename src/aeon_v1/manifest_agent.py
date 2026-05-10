@@ -200,7 +200,7 @@ class ManifestAgent:
         """Walk all .py files under src/ and extract third-party import roots.
 
         Excludes stdlib modules and the aeon_v1 package itself.
-        Returns only top-level package names (e.g. 'anthropic' not 'anthropic.types').
+        Returns only top-level package names (e.g. 'samplepkg' not 'samplepkg.types').
         """
         src_dir = self.config.base_path / "src"
         if not src_dir.exists():

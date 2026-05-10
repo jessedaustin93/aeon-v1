@@ -67,9 +67,9 @@ def _write_py_file(cfg, content, name="test_module.py"):
 
 class TestDriftReport:
     def test_no_drift(self):
-        r = DriftReport([], [], ["anthropic"], "2024-01-01T00:00:00+00:00")
+        r = DriftReport([], [], ["samplepkg"], "2024-01-01T00:00:00+00:00")
         assert not r.has_drift
-        assert r.matched == ["anthropic"]
+        assert r.matched == ["samplepkg"]
 
     def test_has_drift_when_code_missing(self):
         r = DriftReport(["requests"], [], [], "2024-01-01T00:00:00+00:00")
@@ -80,7 +80,7 @@ class TestDriftReport:
         assert r.has_drift
 
     def test_summary_no_drift(self):
-        r = DriftReport([], [], ["anthropic"], "2024-01-01T00:00:00+00:00")
+        r = DriftReport([], [], ["samplepkg"], "2024-01-01T00:00:00+00:00")
         assert "No drift" in r.summary()
 
     def test_summary_shows_missing(self):
@@ -142,10 +142,10 @@ class TestScanManifest:
 
 class TestScanImports:
     def test_finds_third_party_import(self, cfg):
-        _write_py_file(cfg, "import anthropic\n")
+        _write_py_file(cfg, "import samplepkg\n")
         agent = ManifestAgent(cfg)
         imports = agent.scan_imports()
-        assert "anthropic" in imports
+        assert "samplepkg" in imports
 
     def test_excludes_stdlib(self, cfg):
         _write_py_file(cfg, "import os\nimport json\nimport pathlib\n")
@@ -162,21 +162,21 @@ class TestScanImports:
         assert "aeon_v1" not in imports
 
     def test_from_import(self, cfg):
-        _write_py_file(cfg, "from anthropic import Anthropic\n")
+        _write_py_file(cfg, "from samplepkg import Client\n")
         agent = ManifestAgent(cfg)
         imports = agent.scan_imports()
-        assert "anthropic" in imports
+        assert "samplepkg" in imports
 
     def test_no_src_dir_returns_empty(self, cfg):
         agent = ManifestAgent(cfg)
         assert agent.scan_imports() == set()
 
     def test_multiple_files(self, cfg):
-        _write_py_file(cfg, "import anthropic\n", "a.py")
+        _write_py_file(cfg, "import samplepkg\n", "a.py")
         _write_py_file(cfg, "import httpx\n", "b.py")
         agent = ManifestAgent(cfg)
         imports = agent.scan_imports()
-        assert "anthropic" in imports
+        assert "samplepkg" in imports
         assert "httpx" in imports
 
     def test_syntax_error_file_skipped(self, cfg):
@@ -204,11 +204,11 @@ class TestScanRequirements:
 
     def test_skips_comments(self, cfg):
         (cfg.base_path / "requirements.txt").write_text(
-            "# this is a comment\nanthropicX\n", encoding="utf-8"
+            "# this is a comment\nsamplepkgX\n", encoding="utf-8"
         )
         agent = ManifestAgent(cfg)
         reqs = agent.scan_requirements()
-        assert "anthropicx" in reqs  # normalised
+        assert "samplepkgx" in reqs  # normalised
 
     def test_normalises_hyphens(self, cfg):
         (cfg.base_path / "requirements.txt").write_text(
@@ -229,13 +229,13 @@ class TestScanRequirements:
 
 class TestCheckDrift:
     def test_no_drift_when_all_matched(self, cfg):
-        _write_manifest(cfg, "### anthropic\n- Purpose: LLM\n\n")
-        _write_py_file(cfg, "import anthropic\n")
-        (cfg.base_path / "requirements.txt").write_text("anthropic\n", encoding="utf-8")
+        _write_manifest(cfg, "### samplepkg\n- Purpose: test package\n\n")
+        _write_py_file(cfg, "import samplepkg\n")
+        (cfg.base_path / "requirements.txt").write_text("samplepkg\n", encoding="utf-8")
         agent  = ManifestAgent(cfg)
         report = agent.check_drift()
-        assert "anthropic" in report.matched
-        assert "anthropic" not in report.in_code_not_manifest
+        assert "samplepkg" in report.matched
+        assert "samplepkg" not in report.in_code_not_manifest
 
     def test_detects_import_missing_from_manifest(self, cfg):
         _write_manifest(cfg)  # no 'httpx' in manifest
@@ -271,7 +271,7 @@ class TestCheckDrift:
 
 class TestHelpers:
     def test_normalise_lowercase(self):
-        assert _normalise("Anthropic") == "anthropic"
+        assert _normalise("SamplePkg") == "samplepkg"
 
     def test_normalise_hyphens(self):
         assert _normalise("my-lib") == "my_lib"

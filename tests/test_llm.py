@@ -3,7 +3,7 @@
 Coverage:
 - Config defaults and AEON_V1_LLM env toggle
 - generate_text returns None when disabled
-- generate_text returns None when API key missing (even if enabled)
+- generate_text returns None when LM Studio is unavailable
 - Reflection fallback: full rule-based path works without LLM
 - Simulation fallback: full rule-based path works without LLM
 - Mocked LLM output is correctly inserted into reflection Markdown
@@ -60,11 +60,12 @@ def test_llm_env_zero_means_disabled(monkeypatch):
 
 def test_llm_config_defaults():
     cfg = Config()
-    assert cfg.llm_provider == "anthropic"
-    assert cfg.llm_model == "claude-sonnet-4-6"
+    assert cfg.llm_provider == "lmstudio"
+    assert cfg.llm_model == "local-model"
     assert cfg.llm_temperature == 0.2
     assert cfg.llm_max_tokens == 1200
     assert cfg.llm_timeout_seconds == 60
+
 
 
 # ---------------------------------------------------------------------------
@@ -77,41 +78,12 @@ def test_generate_text_returns_none_when_disabled():
     assert generate_text("hello", cfg) is None
 
 
-def test_generate_text_returns_none_without_api_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    cfg = Config()
-    cfg.llm_enabled = True
-    # No API key → None, never raises
-    result = generate_text("hello", cfg)
-    assert result is None
-
-
-def test_generate_text_returns_none_on_import_error(monkeypatch):
-    """If anthropic is not installed, generate_text returns None gracefully."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
-    cfg = Config()
-    cfg.llm_enabled = True
-    # Simulate ImportError when anthropic is imported inside _call_anthropic
-    import builtins
-    real_import = builtins.__import__
-
-    def mock_import(name, *args, **kwargs):
-        if name == "anthropic":
-            raise ImportError("anthropic not installed")
-        return real_import(name, *args, **kwargs)
-
-    with patch("builtins.__import__", side_effect=mock_import):
-        result = generate_text("hello", cfg)
-    assert result is None
-
-
-def test_generate_text_returns_none_on_api_error(monkeypatch):
-    """API errors are caught and None is returned — system never crashes."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "fake-key")
+def test_generate_text_returns_none_when_lmstudio_unavailable():
+    """LM Studio connection failures return None — system never crashes."""
     cfg = Config()
     cfg.llm_enabled = True
 
-    with patch("aeon_v1.llm._call_anthropic", return_value=None):
+    with patch("aeon_v1.llm._call_lmstudio_messages", return_value=None):
         result = generate_text("hello", cfg)
     assert result is None
 

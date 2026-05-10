@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 from .chat_cli import ChatTurn, build_response, retrieve_context, _load_recent_turns
 from .config import Config
+from .conversation import ConversationTracker
 from .ingest import ingest
 from .launcher_config import load_launcher_config
 from .linker import link_memories
@@ -52,6 +53,8 @@ class DashboardController:
         self._index_agent = MemoryIndexAgent(self.config)
         self._search_agent = SearchAgent(self.config)
         self._self_agent = SelfInspectionAgent(self.config)
+        self._tracker = ConversationTracker(config=self.config)
+        self._tracker_turn_count = 0
         self._lock = threading.RLock()
 
     # ------------------------------------------------------------------ status
@@ -92,7 +95,11 @@ class DashboardController:
                 "--poll-seconds",
                 str(runner_cfg.get("poll_seconds", 5)),
                 "--link-every-passes",
-                str(runner_cfg.get("link_every_passes", 12)),
+                str(runner_cfg.get("link_every_passes", 60)),
+                "--reflect-every-passes",
+                str(runner_cfg.get("reflect_every_passes", 720)),
+                "--consolidate-every-passes",
+                str(runner_cfg.get("consolidate_every_passes", 120)),
             ]
             popen = subprocess.Popen(
                 command,
@@ -142,6 +149,7 @@ class DashboardController:
         return {"ok": False, "message": "vault path does not exist"}
 
     def quit_all(self) -> Dict[str, Any]:
+        self._flush_tracker()
         result = {"runner": self.stop_runner()}
         for name in ("lm_studio", "obsidian"):
             proc = self._processes.get(name)
@@ -189,6 +197,8 @@ class DashboardController:
 
         effective_text = (text or "Please look at this image.") + image_context
 
+        self._tracker.add_turn("user", text or "image")
+
         self_result = None if media_record else self._self_agent.handle_chat_query_with_ids(effective_text)
         search_result = None if media_record or self_result else self._search_agent.handle_chat_query_with_ids(effective_text)
         user_memory_id = None
@@ -211,6 +221,12 @@ class DashboardController:
                 index_agent=self._index_agent,
             )
             llm_used = not response.startswith("[local]")
+
+        self._tracker.add_turn("aeon", response)
+        self._tracker_turn_count += 1
+        if self._tracker_turn_count >= 25:
+            self._flush_tracker()
+
         assistant_memory_id = None
         if self_result is None and search_result is None:
             assistant_memory_id = self._ingest_chat_text(f"Aeon: {response}")
@@ -246,6 +262,15 @@ class DashboardController:
         return {"ok": result.get("media") is not None, **result}
 
     # ---------------------------------------------------------------- internals
+
+    def _flush_tracker(self) -> None:
+        try:
+            self._tracker.close(store=True)
+        except Exception:
+            pass
+        finally:
+            self._tracker = ConversationTracker(config=self.config)
+            self._tracker_turn_count = 0
 
     def _ingest_chat_text(self, text: str) -> Optional[str]:
         try:
@@ -797,7 +822,10 @@ def _dashboard_html() -> str:
         ['pid', runner.pid || ''],
         ['heartbeat', runner.heartbeat_at || runner.updated_at || ''],
         ['passes', runner.passes || 0],
-        ['last link', runner.last_link_at || ''],
+        ['last reflection', runner.last_reflection_at || '—'],
+        ['fresh reflections', runner.fresh_reflections ?? '—'],
+        ['last consolidation', runner.last_consolidation_at || '—'],
+        ['last link', runner.last_link_at || '—'],
         ['last error', runner.last_error || ''],
       ]);
       const lm = data.lm_studio || {};
