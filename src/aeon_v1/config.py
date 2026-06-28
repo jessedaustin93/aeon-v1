@@ -124,6 +124,16 @@ class Config:
         # LM Studio / OpenAI-compatible local server
         self.llm_base_url: str = os.environ.get("AEON_V1_LLM_BASE_URL", "http://localhost:1234/v1")
         self.llm_music_base_url: str = os.environ.get("AEON_V1_LLM_MUSIC_BASE_URL", self.llm_base_url)
+        # Agent Mesh dispatch -- outbound governed music tasks (see mesh_dispatch).
+        # The hub on T5810 records each accepted proposal as a pending, human-gated
+        # approval that a T3610 station must claim and run. Empty url/token => the
+        # action only prepares the task and never leaves the machine.
+        self.mesh_hub_url: str = os.environ.get("AEON_V1_MESH_HUB_URL", "").rstrip("/")
+        self.mesh_token: str = os.environ.get("AEON_V1_MESH_TOKEN", "")
+        self.mesh_music_agent: str = os.environ.get("AEON_V1_MESH_MUSIC_AGENT", "music@t3610")
+        self.mesh_music_cwd: str = os.environ.get("AEON_V1_MESH_MUSIC_CWD", "/mnt/jellymedia1")
+        self.mesh_task_ttl_seconds: int = int(os.environ.get("AEON_V1_MESH_TASK_TTL", "900"))
+        self.mesh_timeout_seconds: int = int(os.environ.get("AEON_V1_MESH_TIMEOUT", "15"))
         # When True, reflect/simulate use tool calling so the LLM queries the
         # memory index agent instead of receiving all memories inlined in the prompt.
         self.llm_tool_calling: bool = os.environ.get("AEON_V1_LLM_TOOL_CALLING", "0").strip() == "1"

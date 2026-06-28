@@ -25,6 +25,7 @@ from .ingest import ingest
 from .linker import link_memories
 from .llm import generate_chat, generate_music_chat, generate_text, generate_with_memory
 from .memory_index_agent import MemoryIndexAgent
+from .mesh_dispatch import manage_music
 from .orchestrator import Orchestrator
 from .reflect import reflect
 from .search import search
@@ -149,6 +150,7 @@ class TerminalChatApp(cmd.Cmd):
                   /reflect           run one reflection pass now
                   /tick              run one orchestrator tick now
                   /transcript        show where this session is being logged
+                  /music <proposal>  dispatch an accepted music action to Agent Mesh
                   /exit              leave the chat
 
                 You can also just type normally. Aeon will ingest the turn,
@@ -212,6 +214,22 @@ class TerminalChatApp(cmd.Cmd):
             print(str(self.options.transcript_path))
         else:
             print("Transcript logging is off for this session.")
+
+    def do_music(self, arg: str) -> None:
+        """Accept a planned music action and dispatch it as an audited Agent
+        Mesh task on T3610. Usage: /music grab the new Sleep Token album in FLAC
+
+        Typing this command IS your explicit acceptance of the proposal. The hub
+        records it as a pending approval; nothing runs until you approve it there.
+        """
+        proposal = arg.strip()
+        if not proposal:
+            print("Usage: /music <accepted proposal>")
+            return
+        result = manage_music(proposal, accepted=True, config=self.config)
+        print(result.get("detail") or result.get("reason") or result.get("status", ""))
+        if result.get("approval_id"):
+            print(f"Agent Mesh approval id: {result['approval_id']}")
 
     def do_exit(self, arg: str) -> bool:
         """Exit Aeon chat."""

@@ -43,6 +43,32 @@ AEON_V1_LLM_MUSIC_TIMEOUT
   Request timeout in seconds for the distributed music role.
   Default: 90
 
+AEON_V1_MESH_HUB_URL
+  Base URL of the Agent Mesh hub (on T5810) used to dispatch accepted music
+  proposals as audited, human-gated approvals. Empty => manage_music only
+  prepares the task and never leaves the machine.
+  Default: (empty)
+
+AEON_V1_MESH_TOKEN
+  Bearer token for the Agent Mesh hub API (AGENT_MESH_TOKEN on the hub).
+  Default: (empty)
+
+AEON_V1_MESH_MUSIC_AGENT
+  Mesh agent id of the T3610 music station that claims and runs the task.
+  Default: music@t3610
+
+AEON_V1_MESH_MUSIC_CWD
+  Working directory the station should use for the music task.
+  Default: /mnt/jellymedia1
+
+AEON_V1_MESH_TASK_TTL
+  Seconds the pending approval stays valid before it expires (hub allows 30-900).
+  Default: 900
+
+AEON_V1_MESH_TIMEOUT
+  Request timeout in seconds for Agent Mesh hub calls.
+  Default: 15
+
 AEON_V1_LLM_TIMEOUT
   Request timeout in seconds. Increase for slower local models.
   Default: 120

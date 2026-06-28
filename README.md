@@ -146,6 +146,12 @@ The search model does not become Aeon's chat voice. It only helps `SearchAgent` 
 The music model also remains internal: explicit library-management requests route
 to it, while the operator continues to interact with one Aeon identity.
 
+Accepted music proposals never execute locally. The `/music <proposal>` command
+(your explicit acceptance) calls `manage_music`, which hands the plan to the
+Agent Mesh hub as a pending, audited approval that a T3610 station must claim
+and run only after you approve it -- no auto-approval, every step audited. With
+no hub configured the task is merely prepared and stays on the machine.
+
 See [docs/setup_from_github.md](docs/setup_from_github.md) and [docs/tools_manifest.md](docs/tools_manifest.md) for more.
 
 ## Memory And Truth Modes
