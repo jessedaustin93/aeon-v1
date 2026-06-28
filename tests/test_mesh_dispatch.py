@@ -183,3 +183,30 @@ def test_auto_approve_without_token_stays_pending(tmp_path):
                           client=MeshClient(cfg, http_request=transport))
     assert result["status"] == "dispatched"
     assert not any(c["url"].endswith("/decision") for c in transport.calls)
+
+
+def test_build_response_dispatches_music_when_auto_approve(tmp_path, monkeypatch):
+    from aeon_v1 import chat_cli
+    cfg = Config(tmp_path)
+    cfg.mesh_auto_approve = True
+    calls = []
+    monkeypatch.setattr(chat_cli, "load_core_context", lambda c: "")
+    monkeypatch.setattr(chat_cli, "manage_music",
+                        lambda text, **kw: calls.append((text, kw)) or {"detail": "Dispatched and auto-approved."})
+    out = chat_cli.build_response("grab the new Sleep Token album in FLAC", [], [], cfg, None)
+    assert "Dispatched and auto-approved" in out
+    assert calls and calls[0][0] == "grab the new Sleep Token album in FLAC"
+    assert calls[0][1]["accepted"] is True
+
+
+def test_build_response_plans_music_when_auto_approve_off(tmp_path, monkeypatch):
+    from aeon_v1 import chat_cli
+    cfg = Config(tmp_path)
+    cfg.mesh_auto_approve = False
+    called = []
+    monkeypatch.setattr(chat_cli, "load_core_context", lambda c: "")
+    monkeypatch.setattr(chat_cli, "manage_music", lambda *a, **k: called.append(1) or {})
+    monkeypatch.setattr(chat_cli, "generate_music_chat", lambda *a, **k: "Here is the plan.")
+    out = chat_cli.build_response("dedupe my music library", [], [], cfg, None)
+    assert "Here is the plan." in out
+    assert called == []  # no dispatch when auto-approve is off

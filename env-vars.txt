@@ -96,6 +96,15 @@ AEON_V1_MUSIC_EXECUTOR_INTERVAL
   Seconds between polls of the hub for approved music tasks.
   Default: 20
 
+AEON_V1_MUSIC_ALLOW_ADD
+  '1' => the adapter may ADD a not-in-library album (monitored) and search it,
+  not just search existing items. Library-mutating; off by default.
+  Default: 0
+
+AEON_V1_LIDARR_ROOT_FOLDER / AEON_V1_LIDARR_QUALITY_PROFILE / AEON_V1_LIDARR_METADATA_PROFILE
+  Named overrides for added artists; default to Lidarr's first configured one.
+  Default: (empty -> first)
+
 AEON_V1_LLM_TIMEOUT
   Request timeout in seconds. Increase for slower local models.
   Default: 120

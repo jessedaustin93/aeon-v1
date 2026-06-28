@@ -7,14 +7,14 @@ executor claims that approval and runs this CLI.
 
 Safety is enforced two ways:
 
-* A hard allowlist in ``LidarrClient._request`` -- only album/artist *reads* and
-  the ``AlbumSearch`` / ``ArtistSearch`` trigger commands are permitted. The
-  adapter physically cannot delete, rename, change settings, or add download
-  clients/indexers, regardless of how the calling code evolves.
-* ``apply-proposal`` never *adds* anything. It looks up candidate releases and,
-  for albums already monitored in the library, triggers a search (which uses the
-  configured slskd/torrent download clients). Anything not already in the library
-  is reported back for a human to add -- no silent library growth.
+* A hard allowlist in ``LidarrClient._api`` -- only album/artist/profile *reads*,
+  adding an album, and AlbumSearch/ArtistSearch triggers are permitted. The
+  adapter physically cannot delete, rename, or change settings, however the
+  calling code evolves.
+* Adding new music is gated behind ``music_allow_add`` (off by default). When off,
+  ``apply-proposal`` only triggers a search for albums already in the library and
+  reports anything else for a human to add. When on, it may add the matched album
+  (monitored) + search just it -- it never mass-monitors a discography.
 """
 from __future__ import annotations
 
@@ -29,7 +29,6 @@ from .config import Config
 
 HttpRequest = Callable[[str, str, Optional[bytes], Dict[str, str], float], bytes]
 
-# Commands the adapter may trigger via Lidarr's /command endpoint.
 ALLOWED_COMMANDS = {"AlbumSearch", "ArtistSearch"}
 
 
@@ -49,22 +48,22 @@ def _default_http_request(method, url, body, headers, timeout):
 
 
 class LidarrClient:
-    """Allowlisted Lidarr API client. Reads + search triggers only."""
+    """Allowlisted Lidarr API client. Reads + add-album + search triggers only."""
 
     def __init__(self, config: Config, *, http_request: Optional[HttpRequest] = None) -> None:
         self.config = config
         self._request = http_request or _default_http_request
 
     def _api(self, method: str, path: str, *, params: Optional[Dict] = None, body: Optional[Dict] = None):
-        # --- hard allowlist: the only thing standing between a proposal and the
-        # media stack. Keep it strict. ---
+        # --- hard allowlist: the only thing between a proposal and the media stack.
+        # Reads, adding an album, and search triggers. No deletes, no settings. ---
+        reads = ("/api/v1/album", "/api/v1/artist", "/api/v1/rootfolder",
+                 "/api/v1/qualityprofile", "/api/v1/metadataprofile")
         allowed = (
-            method == "GET" and (
-                path.startswith("/api/v1/album") or path.startswith("/api/v1/artist")
-            )
-        ) or (
-            method == "POST" and path == "/api/v1/command"
-            and (body or {}).get("name") in ALLOWED_COMMANDS
+            (method == "GET" and path.startswith(reads))
+            or (method == "POST" and path == "/api/v1/album")
+            or (method == "POST" and path == "/api/v1/command"
+                and (body or {}).get("name") in ALLOWED_COMMANDS)
         )
         if not allowed:
             raise PermissionError(f"disallowed Lidarr call: {method} {path} {(body or {}).get('name','')}")
@@ -84,16 +83,70 @@ class LidarrClient:
     def trigger_album_search(self, album_id: int) -> Dict:
         return self._api("POST", "/api/v1/command", body={"name": "AlbumSearch", "albumIds": [album_id]})
 
+    def rootfolders(self) -> List[Dict]:
+        return self._api("GET", "/api/v1/rootfolder") or []
+
+    def quality_profiles(self) -> List[Dict]:
+        return self._api("GET", "/api/v1/qualityprofile") or []
+
+    def metadata_profiles(self) -> List[Dict]:
+        return self._api("GET", "/api/v1/metadataprofile") or []
+
+    def add_album(self, album: Dict) -> Dict:
+        return self._api("POST", "/api/v1/album", body=album)
+
 
 def _clean_term(text: str) -> str:
     return " ".join((text or "").split())
 
 
-def apply_proposal(text: str, *, config: Config, client: Optional[LidarrClient] = None, limit: int = 5) -> Tuple[int, str]:
-    """Look up an accepted proposal and trigger searches for matching library albums.
+def _pick(items: List[Dict], name: str, key: str) -> Optional[Dict]:
+    """Pick the named item (case-insensitive) or the first one."""
+    if not items:
+        return None
+    if name:
+        for item in items:
+            if str(item.get(key, "")).lower() == name.lower():
+                return item
+    return items[0]
 
-    Returns ``(exit_code, summary)``. exit_code 0 = handled (search queued or
-    candidates reported); non-zero = error.
+
+def _label(album: Dict) -> str:
+    artist = (album.get("artist") or {}).get("artistName", "?")
+    return f"{artist} - {album.get('title', '?')}"
+
+
+def _add_new_album(results: List[Dict], *, config: Config, client: LidarrClient) -> Tuple[int, str]:
+    # Prefer a proper "Album" over covers/singles that album/lookup also returns.
+    pick = next((a for a in results if a.get("albumType") == "Album"), results[0])
+    root = _pick(client.rootfolders(), config.lidarr_root_folder, "path")
+    quality = _pick(client.quality_profiles(), config.lidarr_quality_profile, "name")
+    metadata = _pick(client.metadata_profiles(), config.lidarr_metadata_profile, "name")
+    if not (root and quality and metadata):
+        return 5, "Lidarr is missing a root folder or quality/metadata profile."
+
+    album = dict(pick)
+    album["monitored"] = True
+    album["addOptions"] = {"searchForNewAlbum": True}  # search just this album
+    artist = dict(album.get("artist") or {})
+    artist["rootFolderPath"] = root["path"]
+    artist["qualityProfileId"] = quality["id"]
+    artist["metadataProfileId"] = metadata["id"]
+    artist["monitored"] = True
+    artist["addOptions"] = {"monitor": "none", "searchForMissingAlbums": False}
+    album["artist"] = artist
+    try:
+        client.add_album(album)
+    except (MusicActionError, PermissionError) as exc:
+        return 4, f"add failed: {exc}"
+    return 0, f"Added + searching: {_label(pick)}"
+
+
+def apply_proposal(text: str, *, config: Config, client: Optional[LidarrClient] = None, limit: int = 5) -> Tuple[int, str]:
+    """Act on an accepted proposal. Returns ``(exit_code, summary)``.
+
+    In-library albums get a search trigger. Not-in-library albums are added +
+    searched when ``music_allow_add`` is on, otherwise reported for manual add.
     """
     term = _clean_term(text)
     if not term:
@@ -104,28 +157,24 @@ def apply_proposal(text: str, *, config: Config, client: Optional[LidarrClient] 
     except (MusicActionError, PermissionError) as exc:
         return 3, f"lookup failed: {exc}"
 
-    # An album already in the library carries a positive id; lookup-only matches
-    # report id 0. We only act on what the operator already monitors.
     in_library = [a for a in results if isinstance(a, dict) and (a.get("id") or 0) > 0]
     queued = []
     for album in in_library[:limit]:
         try:
             client.trigger_album_search(int(album["id"]))
-            title = album.get("title", "?")
-            artist = (album.get("artist") or {}).get("artistName", "?")
-            queued.append(f"{artist} - {title}")
+            queued.append(_label(album))
         except (MusicActionError, PermissionError) as exc:
             return 4, f"search trigger failed: {exc}"
-
     if queued:
         return 0, "Queued Lidarr search for: " + "; ".join(queued)
-    candidates = [
-        f"{(a.get('artist') or {}).get('artistName','?')} - {a.get('title','?')}"
-        for a in results[:limit] if isinstance(a, dict)
-    ]
-    if candidates:
-        return 0, "Not in library; add one of these first: " + "; ".join(candidates)
-    return 0, f"No Lidarr matches for {term!r}."
+
+    real = [a for a in results if isinstance(a, dict)]
+    if not real:
+        return 0, f"No Lidarr matches for {term!r}."
+    if config.music_allow_add:
+        return _add_new_album(real, config=config, client=client)
+    candidates = [_label(a) for a in real[:limit]]
+    return 0, "Not in library; add one of these first: " + "; ".join(candidates)
 
 
 def main(argv: Optional[List[str]] = None) -> int:

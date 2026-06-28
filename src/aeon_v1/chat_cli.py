@@ -367,6 +367,11 @@ def build_response(
 ) -> str:
     core = load_core_context(config)
     if is_music_management_request(user_text):
+        # Streamlined path: when auto-approve is on, the request itself dispatches a
+        # governed, audited task to the music station instead of only planning.
+        if config.mesh_auto_approve:
+            outcome = manage_music(user_text, accepted=True, config=config)
+            return strip_markdown(outcome.get("detail", outcome.get("reason", "Working on it.")))
         music_text = generate_music_chat(
             [
                 {"role": "system", "content": MUSIC_SYSTEM_PROMPT},

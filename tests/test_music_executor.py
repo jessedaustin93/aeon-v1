@@ -146,3 +146,62 @@ def test_executor_requires_hub_config(tmp_path):
     import pytest
     with pytest.raises(ExecutorError):
         executor.poll_once()
+
+
+class FakeLidarrAdd:
+    """Fake Lidarr with profiles + add-album, records the add payload."""
+
+    def __init__(self, lookup):
+        self.lookup = lookup
+        self.added = []
+        self.commands = []
+
+    def __call__(self, method, url, body, headers, timeout):
+        if method == "GET" and "/album/lookup" in url:
+            return json.dumps(self.lookup).encode()
+        if method == "GET" and url.endswith("/rootfolder"):
+            return json.dumps([{"id": 1, "path": "/music"}]).encode()
+        if method == "GET" and url.endswith("/qualityprofile"):
+            return json.dumps([{"id": 1, "name": "Any"}, {"id": 2, "name": "Lossless"}]).encode()
+        if method == "GET" and url.endswith("/metadataprofile"):
+            return json.dumps([{"id": 1, "name": "Standard"}]).encode()
+        if method == "POST" and url.endswith("/api/v1/album"):
+            self.added.append(json.loads(body))
+            return b"{}"
+        if method == "POST" and url.endswith("/api/v1/command"):
+            self.commands.append(json.loads(body))
+            return b"{}"
+        raise AssertionError(f"unexpected {method} {url}")
+
+
+def test_apply_proposal_adds_new_album_when_allowed(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg.music_allow_add = True
+    cfg.lidarr_quality_profile = "Lossless"
+    transport = FakeLidarrAdd([
+        {"id": 0, "albumType": "Single", "title": "Some Single", "artist": {"artistName": "X", "foreignArtistId": "x"}},
+        {"id": 0, "albumType": "Album", "title": "Even In Arcadia",
+         "artist": {"artistName": "Sleep Token", "foreignArtistId": "st"}},
+    ])
+    code, summary = apply_proposal("Sleep Token new album", config=cfg, client=LidarrClient(cfg, http_request=transport))
+    assert code == 0 and "Added + searching" in summary and "Sleep Token - Even In Arcadia" in summary
+    assert len(transport.added) == 1
+    added = transport.added[0]
+    # picked the Album (not the Single), monitored + searched, profiles resolved
+    assert added["title"] == "Even In Arcadia"
+    assert added["monitored"] is True and added["addOptions"] == {"searchForNewAlbum": True}
+    assert added["artist"]["rootFolderPath"] == "/music"
+    assert added["artist"]["qualityProfileId"] == 2  # Lossless
+    assert added["artist"]["metadataProfileId"] == 1
+    assert added["artist"]["addOptions"] == {"monitor": "none", "searchForMissingAlbums": False}
+
+
+def test_apply_proposal_does_not_add_when_disallowed(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg.music_allow_add = False  # default
+    transport = FakeLidarrAdd([
+        {"id": 0, "albumType": "Album", "title": "New Thing", "artist": {"artistName": "Y"}},
+    ])
+    code, summary = apply_proposal("new thing", config=cfg, client=LidarrClient(cfg, http_request=transport))
+    assert code == 0 and "Not in library" in summary
+    assert transport.added == []  # nothing added

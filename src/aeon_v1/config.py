@@ -145,6 +145,14 @@ class Config:
         self.lidarr_api_key: str = os.environ.get("AEON_V1_LIDARR_API_KEY", "")
         self.lidarr_timeout_seconds: int = int(os.environ.get("AEON_V1_LIDARR_TIMEOUT", "30"))
         self.music_executor_interval: int = int(os.environ.get("AEON_V1_MUSIC_EXECUTOR_INTERVAL", "20"))
+        # Add-new-music: when allowed, the adapter may ADD an artist/album to Lidarr
+        # (monitored) and search it, not just search existing library items. Off by
+        # default (library-mutating); enable per-deploy. Root folder / quality /
+        # metadata default to Lidarr's first configured one unless named here.
+        self.music_allow_add: bool = os.environ.get("AEON_V1_MUSIC_ALLOW_ADD", "0").strip() == "1"
+        self.lidarr_root_folder: str = os.environ.get("AEON_V1_LIDARR_ROOT_FOLDER", "")
+        self.lidarr_quality_profile: str = os.environ.get("AEON_V1_LIDARR_QUALITY_PROFILE", "")
+        self.lidarr_metadata_profile: str = os.environ.get("AEON_V1_LIDARR_METADATA_PROFILE", "")
         # When True, reflect/simulate use tool calling so the LLM queries the
         # memory index agent instead of receiving all memories inlined in the prompt.
         self.llm_tool_calling: bool = os.environ.get("AEON_V1_LLM_TOOL_CALLING", "0").strip() == "1"
