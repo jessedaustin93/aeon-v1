@@ -1,7 +1,12 @@
 import json
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
+try:  # Python 3.11+
+    from datetime import UTC
+except ImportError:  # Python 3.10
+    from datetime import timezone as _timezone
+    UTC = _timezone.utc
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
