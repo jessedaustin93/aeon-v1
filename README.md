@@ -126,8 +126,10 @@ AEON_V1_LLM_MODEL          general fallback model
 AEON_V1_LLM_CHAT_MODEL     normal chat model
 AEON_V1_LLM_DEEP_MODEL     deeper reasoning/tool-call model
 AEON_V1_LLM_SEARCH_MODEL   memory-search planner model
+AEON_V1_LLM_MUSIC_MODEL    song-pipeline planning model
 AEON_V1_LLM_VISION_MODEL   image understanding model
 AEON_V1_LLM_BASE_URL       usually http://localhost:1234/v1
+AEON_V1_LLM_MUSIC_BASE_URL optional remote machine-local endpoint for the music role
 ```
 
 Recommended local split:
@@ -137,9 +139,12 @@ Chat:   Qwen chat/instruct model
 Deep:   Qwen thinking/reasoning model
 Search: Mistral/Ministral-style model for planning memory queries
 Vision: Qwen VL or another vision-capable model
+Music: small instruct model on the machine that owns the music pipeline
 ```
 
 The search model does not become Aeon's chat voice. It only helps `SearchAgent` turn fuzzy recall questions into concrete memory search terms.
+The music model also remains internal: explicit library-management requests route
+to it, while the operator continues to interact with one Aeon identity.
 
 See [docs/setup_from_github.md](docs/setup_from_github.md) and [docs/tools_manifest.md](docs/tools_manifest.md) for more.
 

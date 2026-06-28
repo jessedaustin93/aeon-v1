@@ -23,7 +23,7 @@ from .config import Config
 from .conversation import ConversationTracker
 from .ingest import ingest
 from .linker import link_memories
-from .llm import generate_chat, generate_text, generate_with_memory
+from .llm import generate_chat, generate_music_chat, generate_text, generate_with_memory
 from .memory_index_agent import MemoryIndexAgent
 from .orchestrator import Orchestrator
 from .reflect import reflect
@@ -50,6 +50,35 @@ Voice rules - follow these strictly:
 - If asked to recall a specific fact and retrieved memory does not contain it, say you cannot find it instead of guessing.
 - Do not claim actions were executed. If something needs approval, say so in one sentence.
 """
+
+MUSIC_SYSTEM_PROMPT = """You are Aeon's internal music-library planning role for the operator's lawful personal library.
+The operator sees one Aeon identity; never present yourself as a separate agent or model.
+Scope is the local song pipeline only: resolve releases, acquire through Lidarr/slskd,
+tag and organize with beets, deduplicate, and publish into Navidrome.
+Return a concise plain-text interpretation and proposed next action.
+Do not claim anything was downloaded, changed, deleted, or executed.
+Any action must be handed to Agent Mesh and remain subject to operator approval.
+Planning governed actions is allowed. Lidarr resolves and queues releases; slskd
+downloads from Soulseek; beets tags, deduplicates, and organizes; Navidrome indexes
+the finished library. Never claim slskd converts or tags files.
+Do not manage movies, television, books, or unrelated files.
+"""
+
+_MUSIC_ACTION_RE = re.compile(
+    r"\b(?:grab|download|acquire|import|add|tag|retag|organize|sort|dedupe|"
+    r"deduplicate|scan|refresh|remove|delete|upgrade|replace|find)\b",
+    re.IGNORECASE,
+)
+_MUSIC_OBJECT_RE = re.compile(
+    r"\b(?:music|song|songs|track|tracks|album|albums|artist|artists|playlist|"
+    r"lidarr|navidrome|soulseek|slskd|beets|flac|mp3)\b",
+    re.IGNORECASE,
+)
+
+
+def is_music_management_request(text: str) -> bool:
+    """Return True only for explicit song-library management requests."""
+    return bool(_MUSIC_ACTION_RE.search(text) and _MUSIC_OBJECT_RE.search(text))
 
 
 @dataclass
@@ -319,6 +348,16 @@ def build_response(
     index_agent: MemoryIndexAgent,
 ) -> str:
     core = load_core_context(config)
+    if is_music_management_request(user_text):
+        music_text = generate_music_chat(
+            [
+                {"role": "system", "content": MUSIC_SYSTEM_PROMPT},
+                {"role": "user", "content": user_text},
+            ],
+            config=config,
+        )
+        if music_text:
+            return strip_markdown(music_text.strip())
     if config.llm_tool_calling:
         prompt = build_chat_prompt(user_text, memories, history, core=core)
         llm_text = generate_with_memory(prompt, index_agent=index_agent, config=config)

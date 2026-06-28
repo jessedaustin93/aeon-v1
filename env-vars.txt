@@ -26,9 +26,22 @@ AEON_V1_LLM_DEEP_MODEL
   Model name reserved for deeper background reasoning work.
   Default: AEON_V1_LLM_MODEL
 
+AEON_V1_LLM_MUSIC_MODEL
+  Model name used only for explicit song-library management requests.
+  Default: AEON_V1_LLM_CHAT_MODEL
+
 AEON_V1_LLM_BASE_URL
   Base URL for the LM Studio OpenAI-compatible local server.
   Default: http://localhost:1234/v1
+
+AEON_V1_LLM_MUSIC_BASE_URL
+  OpenAI-compatible endpoint for the machine-local music worker. This may point
+  to another tailnet machine while Aeon's identity and memory remain centralized.
+  Default: AEON_V1_LLM_BASE_URL
+
+AEON_V1_LLM_MUSIC_TIMEOUT
+  Request timeout in seconds for the distributed music role.
+  Default: 90
 
 AEON_V1_LLM_TIMEOUT
   Request timeout in seconds. Increase for slower local models.

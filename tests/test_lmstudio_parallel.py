@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List, Optional
 
 from aeon_v1 import Config
-from aeon_v1.llm import generate_chat, generate_text, generate_with_memory
+from aeon_v1.llm import generate_chat, generate_music_chat, generate_text, generate_with_memory
 from aeon_v1.memory_index_agent import MemoryIndexAgent
 
 
@@ -125,6 +125,21 @@ def test_lmstudio_model_routing_uses_chat_base_and_deep_models():
 
     models = [payload["model"] for payload in _FakeLMStudioHandler.payloads]
     assert models == ["chat-model", "base-model", "deep-model"]
+
+
+def test_music_role_uses_its_own_model_and_base_url():
+    primary = _start_fake_lmstudio()
+    music = _start_fake_lmstudio()
+    config = _lmstudio_config(primary)
+    config.llm_music_model = "music-model"
+    config.llm_music_base_url = f"http://127.0.0.1:{music.server_address[1]}/v1"
+    config.llm_music_timeout_seconds = 5
+    try:
+        result = generate_music_chat([{"role": "user", "content": "tag this album"}], config)
+    finally:
+        primary.shutdown(); primary.server_close()
+        music.shutdown(); music.server_close()
+    assert result == "ok:music-model"
 
 
 def test_lmstudio_tool_calling_falls_back_to_deep_model_without_tools():

@@ -110,17 +110,20 @@ class Config:
         self.llm_chat_model: str = os.environ.get("AEON_V1_LLM_CHAT_MODEL", self.llm_model)
         self.llm_deep_model: str = os.environ.get("AEON_V1_LLM_DEEP_MODEL", self.llm_model)
         self.llm_search_model: str = os.environ.get("AEON_V1_LLM_SEARCH_MODEL", self.llm_deep_model)
+        self.llm_music_model: str = os.environ.get("AEON_V1_LLM_MUSIC_MODEL", self.llm_chat_model)
         self.llm_vision_model: str = os.environ.get("AEON_V1_LLM_VISION_MODEL", "")
         self.llm_temperature: float = 0.2
         self.llm_max_tokens: int = int(os.environ.get("AEON_V1_LLM_MAX_TOKENS", "1200"))
         self.llm_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_TIMEOUT", "60"))
         self.llm_chat_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_CHAT_TIMEOUT", "30"))
         self.llm_search_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_SEARCH_TIMEOUT", "12"))
+        self.llm_music_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_MUSIC_TIMEOUT", "90"))
         self.llm_media_timeout_seconds: int = int(os.environ.get("AEON_V1_LLM_MEDIA_TIMEOUT", "120"))
         self.llm_max_attempts: int = int(os.environ.get("AEON_V1_LLM_MAX_ATTEMPTS", "1"))
         self.llm_reasoning_effort: str = os.environ.get("AEON_V1_LLM_REASONING_EFFORT", "low")
         # LM Studio / OpenAI-compatible local server
         self.llm_base_url: str = os.environ.get("AEON_V1_LLM_BASE_URL", "http://localhost:1234/v1")
+        self.llm_music_base_url: str = os.environ.get("AEON_V1_LLM_MUSIC_BASE_URL", self.llm_base_url)
         # When True, reflect/simulate use tool calling so the LLM queries the
         # memory index agent instead of receiving all memories inlined in the prompt.
         self.llm_tool_calling: bool = os.environ.get("AEON_V1_LLM_TOOL_CALLING", "0").strip() == "1"
@@ -141,4 +144,3 @@ class Config:
         # Layer 7 — governance directories
         for subdir in ["staging", "approved", "logs", "tool_additions"]:
             (self.memory_path / subdir).mkdir(parents=True, exist_ok=True)
-

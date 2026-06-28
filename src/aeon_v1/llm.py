@@ -114,6 +114,22 @@ def generate_search_text(prompt: str, config: Optional[Config] = None) -> Option
     )
 
 
+def generate_music_chat(messages: List[Dict], config: Optional[Config] = None) -> Optional[str]:
+    """Call Aeon's machine-local music worker through its compatible API."""
+    if config is None:
+        config = Config()
+    if not config.llm_enabled or not config.llm_music_model:
+        return None
+    return _call_lmstudio_messages(
+        messages,
+        config,
+        model=config.llm_music_model,
+        timeout=config.llm_music_timeout_seconds,
+        include_reasoning=False,
+        base_url=config.llm_music_base_url,
+    )
+
+
 def generate_image_description(
     image_path: Path,
     prompt: str,
@@ -175,9 +191,10 @@ def _call_lmstudio_messages(
     model: Optional[str] = None,
     timeout: Optional[int] = None,
     include_reasoning: bool = True,
+    base_url: Optional[str] = None,
 ) -> Optional[str]:
     """Call LM Studio local server with OpenAI-compatible chat messages."""
-    url = f"{config.llm_base_url.rstrip('/')}/chat/completions"
+    url = f"{(base_url or config.llm_base_url).rstrip('/')}/chat/completions"
     if not _lm_studio_semaphore.acquire(blocking=False):
         return None  # queue full — 10 requests already in flight
 

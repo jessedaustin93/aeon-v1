@@ -108,6 +108,7 @@ AEON_V1_LLM_CHAT_MODEL=your-fast-chat-model-id
 AEON_V1_LLM_MODEL=your-general-model-id
 AEON_V1_LLM_DEEP_MODEL=your-deep-reasoning-model-id
 AEON_V1_LLM_SEARCH_MODEL=your-memory-search-model-id
+AEON_V1_LLM_MUSIC_MODEL=your-music-planning-model-id
 AEON_V1_LLM_VISION_MODEL=your-vision-model-id
 ```
 
@@ -119,6 +120,7 @@ You may use one model for every role, or split them by purpose:
 | `AEON_V1_LLM_MODEL` | General reflection/simulation reasoning |
 | `AEON_V1_LLM_DEEP_MODEL` | Deeper tool-calling reflection/simulation paths |
 | `AEON_V1_LLM_SEARCH_MODEL` | Memory-search planning before the chat model answers |
+| `AEON_V1_LLM_MUSIC_MODEL` | Explicit song-pipeline planning, optionally on another machine |
 | `AEON_V1_LLM_VISION_MODEL` | Optional image understanding for dashboard uploads |
 
 Good generic starting point:
@@ -143,6 +145,18 @@ If LM Studio uses another URL, update:
 ```env
 AEON_V1_LLM_BASE_URL=http://localhost:1234/v1
 ```
+
+Aeon can keep its identity and memory on one host while assigning a role to a
+model on another tailnet machine:
+
+```env
+AEON_V1_LLM_MUSIC_MODEL=qwen3-4b-instruct-2507
+AEON_V1_LLM_MUSIC_BASE_URL=http://100.102.254.21:1234/v1
+AEON_V1_LLM_MUSIC_TIMEOUT=90
+```
+
+Only explicit song-library management requests use this endpoint. Normal chat,
+memory, and deep reasoning remain on the primary Aeon host.
 
 Dashboard image uploads work best when `AEON_V1_LLM_VISION_MODEL` is set to an active vision-capable LM Studio model. If the model is missing, unloaded, or fails, Aeon still stores the image and marks analysis unavailable for later reprocessing.
 
