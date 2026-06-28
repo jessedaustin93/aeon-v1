@@ -120,6 +120,24 @@ class MeshClient:
         )
         return json.loads(raw)
 
+    def approve_approval(self, approval_id: str, *, resolver: str = "aeon-auto") -> Dict:
+        """Approve an approval on the operator's behalf (streamlined flow).
+
+        Carries the separate approval credential the hub requires for /decision, so
+        a music request the operator already made does not also need a manual click.
+        """
+        headers = dict(self._headers())
+        headers["X-Agent-Mesh-Approval"] = self.config.mesh_approval_token
+        url = f"{self.config.mesh_hub_url}/api/approvals/{approval_id}/decision"
+        raw = self._request(
+            "POST",
+            url,
+            json.dumps({"decision": "approved", "resolver": resolver}).encode("utf-8"),
+            headers,
+            self.config.mesh_timeout_seconds,
+        )
+        return json.loads(raw)
+
 
 def manage_music(
     proposal: str,
@@ -210,6 +228,37 @@ def manage_music(
 
     approval_id = approval.get("id")
     audit.append(trace_id, "manage_music", "dispatch", f"approval_created:{approval_id}")
+
+    # Streamlined path: the operator's request is the approval. Opt-in, and only
+    # when an approval token is present; execution stays hard-allowlisted + audited.
+    if config.mesh_auto_approve and config.mesh_approval_token:
+        try:
+            client.approve_approval(approval_id, resolver="aeon-auto")
+        except MeshDispatchError as exc:
+            audit.append(trace_id, "manage_music", "auto_approve", f"error: {exc}")
+            return {
+                "ok": True,
+                "status": "dispatched",
+                "trace_id": trace_id,
+                "approval_id": approval_id,
+                "agent_id": task.agent_id,
+                "approval": approval,
+                "detail": f"Dispatched, but auto-approve failed ({exc}); approve it in Agent Mesh.",
+            }
+        audit.append(trace_id, "manage_music", "auto_approve", f"approved:{approval_id}")
+        return {
+            "ok": True,
+            "status": "approved",
+            "trace_id": trace_id,
+            "approval_id": approval_id,
+            "agent_id": task.agent_id,
+            "approval": approval,
+            "detail": (
+                "Dispatched and auto-approved. The T3610 music station will pick it "
+                "up and run it shortly."
+            ),
+        }
+
     return {
         "ok": True,
         "status": "dispatched",

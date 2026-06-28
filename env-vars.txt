@@ -69,6 +69,17 @@ AEON_V1_MESH_TIMEOUT
   Request timeout in seconds for Agent Mesh hub calls.
   Default: 15
 
+AEON_V1_MESH_APPROVAL_TOKEN
+  Agent Mesh approval credential (AGENT_MESH_APPROVAL_TOKEN on the hub). Required
+  for streamlined auto-approval; without it manage_music leaves tasks pending.
+  Default: (empty)
+
+AEON_V1_MESH_AUTO_APPROVE
+  '1' => an accepted music request approves itself on the hub (your request is
+  the gate) instead of waiting for a manual approve click. Execution stays
+  hard-allowlisted + audited. Off by default.
+  Default: 0
+
 AEON_V1_LIDARR_URL
   Lidarr base URL the aeon-music executor (on T3610) acts against.
   Default: http://localhost:8686

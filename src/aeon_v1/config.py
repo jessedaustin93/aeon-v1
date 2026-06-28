@@ -134,6 +134,12 @@ class Config:
         self.mesh_music_cwd: str = os.environ.get("AEON_V1_MESH_MUSIC_CWD", "/mnt/jellymedia1")
         self.mesh_task_ttl_seconds: int = int(os.environ.get("AEON_V1_MESH_TASK_TTL", "900"))
         self.mesh_timeout_seconds: int = int(os.environ.get("AEON_V1_MESH_TIMEOUT", "15"))
+        # Streamlined approvals: when auto-approve is on AND an approval token is
+        # set, an accepted music proposal approves itself on the hub (your request
+        # IS the gate). Execution stays hard-allowlisted + fully audited. Off by
+        # default so the human /decision gate is preserved unless you opt in.
+        self.mesh_approval_token: str = os.environ.get("AEON_V1_MESH_APPROVAL_TOKEN", "")
+        self.mesh_auto_approve: bool = os.environ.get("AEON_V1_MESH_AUTO_APPROVE", "0").strip() == "1"
         # Lidarr target for the narrow aeon-music action adapter (executor side).
         self.lidarr_url: str = os.environ.get("AEON_V1_LIDARR_URL", "http://localhost:8686").rstrip("/")
         self.lidarr_api_key: str = os.environ.get("AEON_V1_LIDARR_API_KEY", "")

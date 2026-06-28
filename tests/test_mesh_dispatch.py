@@ -134,3 +134,52 @@ def test_do_music_command_dispatches_through_manage_music(tmp_path, capsys):
     assert "prepared but not dispatched" in out
     audit = AuditLog(app.config).read_all()
     assert audit[-1]["agent"] == "manage_music"
+
+
+class AutoApproveTransport(RecordingTransport):
+    """Adds /decision handling to the recording transport."""
+
+    def __call__(self, method, url, body, headers, timeout):
+        if url.endswith("/decision"):
+            self.calls.append({"method": method, "url": url,
+                               "body": json.loads(body) if body else None, "headers": headers})
+            return json.dumps({"id": self.approval_id, "status": "approved"}).encode()
+        return super().__call__(method, url, body, headers, timeout)
+
+
+def test_auto_approve_approves_the_dispatched_task(tmp_path):
+    cfg = _configured(Config(tmp_path))
+    cfg.mesh_auto_approve = True
+    cfg.mesh_approval_token = "approval-secret"
+    transport = AutoApproveTransport(thread_id=5, approval_id="appr-7")
+    result = manage_music("grab the new Sleep Token album", accepted=True, config=cfg,
+                          client=MeshClient(cfg, http_request=transport))
+    assert result["status"] == "approved" and result["ok"] is True
+    decision = [c for c in transport.calls if c["url"].endswith("/decision")]
+    assert len(decision) == 1
+    assert decision[0]["headers"]["X-Agent-Mesh-Approval"] == "approval-secret"
+    assert decision[0]["body"] == {"decision": "approved", "resolver": "aeon-auto"}
+    audit = AuditLog(cfg).read_all()
+    assert audit[-1]["action"] == "auto_approve" and audit[-1]["result"] == "approved:appr-7"
+
+
+def test_auto_approve_off_stays_pending(tmp_path):
+    cfg = _configured(Config(tmp_path))
+    cfg.mesh_auto_approve = False
+    cfg.mesh_approval_token = "approval-secret"
+    transport = AutoApproveTransport()
+    result = manage_music("dedupe my library", accepted=True, config=cfg,
+                          client=MeshClient(cfg, http_request=transport))
+    assert result["status"] == "dispatched"
+    assert not any(c["url"].endswith("/decision") for c in transport.calls)
+
+
+def test_auto_approve_without_token_stays_pending(tmp_path):
+    cfg = _configured(Config(tmp_path))
+    cfg.mesh_auto_approve = True
+    cfg.mesh_approval_token = ""  # no credential -> cannot auto-approve
+    transport = AutoApproveTransport()
+    result = manage_music("dedupe my library", accepted=True, config=cfg,
+                          client=MeshClient(cfg, http_request=transport))
+    assert result["status"] == "dispatched"
+    assert not any(c["url"].endswith("/decision") for c in transport.calls)
