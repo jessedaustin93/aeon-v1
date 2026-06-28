@@ -65,7 +65,7 @@ Do not manage movies, television, books, or unrelated files.
 """
 
 _MUSIC_ACTION_RE = re.compile(
-    r"\b(?:grab|download|acquire|import|add|tag|retag|organize|sort|dedupe|"
+    r"\b(?:plan|queue|grab|download|acquire|import|add|tag|retag|organize|sort|dedupe|"
     r"deduplicate|scan|refresh|remove|delete|upgrade|replace|find)\b",
     re.IGNORECASE,
 )
