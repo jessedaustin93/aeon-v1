@@ -152,6 +152,13 @@ Agent Mesh hub as a pending, audited approval that a T3610 station must claim
 and run only after you approve it -- no auto-approval, every step audited. With
 no hub configured the task is merely prepared and stays on the machine.
 
+On the T3610 side, `aeon-music-executor` (the `music@t3610` station) polls the
+hub for approvals you have approved, claims one, and runs the narrow `aeon-music`
+adapter. The adapter is allowlisted to album/artist reads plus AlbumSearch /
+ArtistSearch triggers -- it can kick off a Soulseek/torrent grab for music already
+in the library but cannot add, delete, or change settings. Mismatched approvals are
+claimed and completed with a rejection so nothing lingers as an unclaimable task.
+
 See [docs/setup_from_github.md](docs/setup_from_github.md) and [docs/tools_manifest.md](docs/tools_manifest.md) for more.
 
 ## Memory And Truth Modes

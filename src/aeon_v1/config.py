@@ -134,6 +134,11 @@ class Config:
         self.mesh_music_cwd: str = os.environ.get("AEON_V1_MESH_MUSIC_CWD", "/mnt/jellymedia1")
         self.mesh_task_ttl_seconds: int = int(os.environ.get("AEON_V1_MESH_TASK_TTL", "900"))
         self.mesh_timeout_seconds: int = int(os.environ.get("AEON_V1_MESH_TIMEOUT", "15"))
+        # Lidarr target for the narrow aeon-music action adapter (executor side).
+        self.lidarr_url: str = os.environ.get("AEON_V1_LIDARR_URL", "http://localhost:8686").rstrip("/")
+        self.lidarr_api_key: str = os.environ.get("AEON_V1_LIDARR_API_KEY", "")
+        self.lidarr_timeout_seconds: int = int(os.environ.get("AEON_V1_LIDARR_TIMEOUT", "30"))
+        self.music_executor_interval: int = int(os.environ.get("AEON_V1_MUSIC_EXECUTOR_INTERVAL", "20"))
         # When True, reflect/simulate use tool calling so the LLM queries the
         # memory index agent instead of receiving all memories inlined in the prompt.
         self.llm_tool_calling: bool = os.environ.get("AEON_V1_LLM_TOOL_CALLING", "0").strip() == "1"

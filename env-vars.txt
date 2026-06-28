@@ -69,6 +69,22 @@ AEON_V1_MESH_TIMEOUT
   Request timeout in seconds for Agent Mesh hub calls.
   Default: 15
 
+AEON_V1_LIDARR_URL
+  Lidarr base URL the aeon-music executor (on T3610) acts against.
+  Default: http://localhost:8686
+
+AEON_V1_LIDARR_API_KEY
+  Lidarr API key for the narrow action adapter. Empty => adapter refuses to act.
+  Default: (empty)
+
+AEON_V1_LIDARR_TIMEOUT
+  Request timeout in seconds for Lidarr calls.
+  Default: 30
+
+AEON_V1_MUSIC_EXECUTOR_INTERVAL
+  Seconds between polls of the hub for approved music tasks.
+  Default: 20
+
 AEON_V1_LLM_TIMEOUT
   Request timeout in seconds. Increase for slower local models.
   Default: 120

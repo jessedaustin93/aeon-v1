@@ -19,6 +19,8 @@ hardware = ["pyserial>=3.5"]
 [project.scripts]
 aeon-chat = "aeon_v1.chat_cli:main"
 aeon-runner = "aeon_v1.runner:main"
+aeon-music = "aeon_v1.music_cli:main"
+aeon-music-executor = "aeon_v1.music_executor:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
