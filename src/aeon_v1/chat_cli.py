@@ -31,6 +31,7 @@ from .reflect import reflect
 from .search import search
 from .search_agent import SearchAgent
 from .self_inspection_agent import SelfInspectionAgent
+from .shared_vault import load_startup_context, search_shared_vault
 from .time_utils import local_now_string
 
 
@@ -174,6 +175,8 @@ class TerminalChatApp(cmd.Cmd):
             "auto_tick": self.options.auto_tick,
             "reflect_every": self.options.reflect_every,
             "turns": self.turn_count,
+            "master_vault_enabled": self.config.master_vault_enabled,
+            "master_vault_path": str(self.config.master_vault_path or ""),
         }
         print(json.dumps(status, indent=2))
 
@@ -366,6 +369,9 @@ def build_response(
     index_agent: MemoryIndexAgent,
 ) -> str:
     core = load_core_context(config)
+    shared_core = load_startup_context(config, max_chars_per_note=6_000)
+    if shared_core:
+        core = f"{core}\n\n{shared_core}" if core else shared_core
     if is_music_management_request(user_text):
         # Streamlined path: when auto-approve is on, the request itself dispatches a
         # governed, audited task to the music station instead of only planning.
@@ -441,7 +447,7 @@ def build_chat_messages(user_text: str, memories: List[Dict], history: Iterable[
     if history_block:
         context_parts.append(f"Recent conversation:\n{history_block}")
     if memory_block:
-        context_parts.append(f"Relevant local memory:\n{memory_block}")
+        context_parts.append(f"Relevant memory and shared context:\n{memory_block}")
 
     user_content = user_text
     if context_parts:
@@ -467,7 +473,11 @@ def retrieve_context(query: str, config: Config, limit: int) -> List[Dict]:
         memory_types=["semantic", "episodic", "consolidations", "reflections", "media", "raw"],
         limit=search_limit,
     )
-    return diversify_results(results, limit)
+    local = diversify_results(results, limit)
+    # Shared context receives a separate, bounded allowance. Retrieval never
+    # imports it into Aeon's local memory or reflection pipeline.
+    shared_limit = min(3, max(1, limit // 2)) if limit > 0 else 0
+    return local + search_shared_vault(query, config, limit=shared_limit)
 
 
 def diversify_results(results: List[Dict], limit: int) -> List[Dict]:

@@ -1,5 +1,8 @@
 # Vault
 
+This is Aeon's local vault. It is not the Master Vault and must not be replaced
+with, symlinked to, or automatically synchronized into the Master Vault.
+
 `vault/` is the human-readable Markdown view of Aeon's memory. It is designed to open cleanly in Obsidian, but the files are normal Markdown and can be read with any editor.
 
 The machine-readable source records live in `memory/`.
@@ -61,3 +64,15 @@ The vault mirrors useful records from `memory/`; it is not a replacement for JSO
 ## Privacy
 
 Vault notes may contain real personal memory. Do not push private local vault content unless it has been generalized and intentionally reviewed.
+
+## Relationship To Master Vault
+
+Aeon may read Jesse's Master Vault as shared project context when
+`AEON_V1_MASTER_VAULT_PATH` is configured. Shared notes remain external and are
+source-labeled in retrieval results; reading them does not import, mirror, age,
+reflect, or consolidate them into this vault.
+
+All automatic runtime capture stays here and in `memory/`. Only concise,
+human-reviewable handoffs, accepted decisions, project status changes, and
+durable cross-assistant facts should be promoted to Master Vault through an
+explicit write workflow.

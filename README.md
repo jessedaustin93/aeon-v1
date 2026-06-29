@@ -146,6 +146,23 @@ The search model does not become Aeon's chat voice. It only helps `SearchAgent` 
 The music model also remains internal: explicit library-management requests route
 to it, while the operator continues to interact with one Aeon identity.
 
+## Master Vault Context
+
+Aeon's `memory/` and local `vault/` remain its primary runtime memory. To give
+Aeon the same shared project context used by Jesse's other assistants, configure:
+
+```text
+AEON_V1_MASTER_VAULT_PATH=/absolute/path/to/Master-Vault
+AEON_V1_MASTER_VAULT_ENABLED=1
+```
+
+Aeon reads the stable AI operating notes at chat startup and searches Master
+Vault Markdown alongside local retrieval. Shared results are source-labeled and
+remain external: they are not imported into local memory or included in local
+reflection, consolidation, aging, or mirroring. Automatic writes never target
+Master Vault; shared handoffs and durable facts require an explicit reviewed
+promotion workflow.
+
 Accepted music proposals never execute locally. The `/music <proposal>` command
 (your explicit acceptance) calls `manage_music`, which hands the plan to the
 Agent Mesh hub as a pending, audited approval that a T3610 station must claim

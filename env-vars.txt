@@ -2,6 +2,17 @@ AEON-V1 ENVIRONMENT VARIABLES
 ==============================
 Update this file whenever a new variable is added.
 
+--- SHARED CONTEXT ---
+
+AEON_V1_MASTER_VAULT_PATH
+  Absolute path to Jesse's Master Vault. When set, Aeon may read shared Markdown
+  as external context. It never uses this path for automatic memory writes.
+  Default: (empty)
+
+AEON_V1_MASTER_VAULT_ENABLED
+  Set to 1 to enable read-only Master Vault context when a path is configured.
+  Default: 1
+
 --- LLM / AI ---
 
 AEON_V1_LLM

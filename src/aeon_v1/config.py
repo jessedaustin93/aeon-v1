@@ -33,6 +33,13 @@ class Config:
         self.base_path = Path(base_path)
         self.vault_path = self.base_path / "vault"
         self.memory_path = self.base_path / "memory"
+        # Shared Master Vault integration is deliberately read-only. Aeon's
+        # automatic writes always remain in memory_path/vault_path.
+        master_vault = os.environ.get("AEON_V1_MASTER_VAULT_PATH", "").strip()
+        self.master_vault_path = Path(master_vault).expanduser() if master_vault else None
+        self.master_vault_enabled: bool = bool(self.master_vault_path) and os.environ.get(
+            "AEON_V1_MASTER_VAULT_ENABLED", "1"
+        ).strip() == "1"
         self.importance_threshold = 0.5
         # Placeholder: reflect after this many ingestions (not enforced automatically yet)
         self.reflection_interval = 10
